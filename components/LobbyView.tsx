@@ -191,10 +191,10 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
               <div className="mafia-counter">
                 <button
                   className="counter-btn"
-                  onClick={() => saveSettings({ ...settingsRef.current, mafiaCount: Math.max(1, settingsRef.current.mafiaCount - 1) })}
-                  disabled={settings.mafiaCount <= 1}
+                  onClick={() => saveSettings({ ...settingsRef.current, mafiaCount: Math.max(0, settingsRef.current.mafiaCount - 1) })}
+                  disabled={settings.mafiaCount <= 0}
                 >−</button>
-                <span className="counter-value">{settings.mafiaCount}</span>
+                <span className="counter-value">{settings.mafiaCount === 0 ? '✗' : settings.mafiaCount}</span>
                 <button
                   className="counter-btn"
                   onClick={() => saveSettings({ ...settingsRef.current, mafiaCount: Math.min(maxMafia, settingsRef.current.mafiaCount + 1) })}
@@ -252,7 +252,10 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
             {/* Склад */}
             <div className="role-summary">
               <span className="role-summary-label">Склад:</span>
-              <span>🔫×{settings.mafiaCount}</span>
+              {settings.mafiaCount > 0
+                ? <span>🔫×{settings.mafiaCount}</span>
+                : <span style={{opacity:.4}}>🔫 вимкнено</span>
+              }
               <span>🔍×1</span>
               {settings.hasDoctor    && <span>💉×1</span>}
               {settings.hasProstitute && <span>💋×1</span>}

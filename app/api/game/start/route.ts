@@ -43,26 +43,20 @@ export async function POST(req: Request) {
 
     // Будуємо список ролей на основі налаштувань
     const roles: Role[] = []
-
-    // Обов'язкові ролі
     for (let i = 0; i < settings.mafiaCount; i++) roles.push('mafia')
     roles.push('sheriff')
-
-    // Опціональні
     if (settings.hasDoctor)     roles.push('doctor')
     if (settings.hasProstitute) roles.push('prostitute')
 
-    // Решта — громадяни
-    const specialCount = roles.length
-    const civiliansNeeded = count - specialCount
+    // Решта — громадяни (мінімум 1)
+    const civiliansNeeded = count - roles.length
     if (civiliansNeeded < 1) {
       return NextResponse.json({
-        error: `Забагато спеціальних ролей для ${count} гравців. Зменшіть кількість мафії.`
+        error: `Забагато ролей для ${count} гравців. Зменшіть кількість мафії або вимкніть опціональні ролі.`
       }, { status: 400 })
     }
     for (let i = 0; i < civiliansNeeded; i++) roles.push('civilian')
 
-    // Перемішуємо і призначаємо
     const shuffledRoles   = shuffle(roles)
     const shuffledPlayers = shuffle(lobbyPlayers)
 
@@ -71,6 +65,13 @@ export async function POST(req: Request) {
       role: shuffledRoles[i],
       isAlive: true,
     }))
+
+    const parts = []
+    if (settings.mafiaCount > 0) parts.push(`${settings.mafiaCount} мафія`)
+    parts.push('шериф')
+    if (settings.hasDoctor)     parts.push('лікар')
+    if (settings.hasProstitute) parts.push('повія')
+    parts.push(`${civiliansNeeded} громадянин(ів)`)
 
     const state: GameState = {
       phase:             'night',
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
       votes:             {},
       killedLastNight:   null,
       winner:            null,
-      lastEvent:         `Гра розпочата! ${settings.mafiaCount} мафія, ${settings.hasDoctor ? 'лікар, ' : ''}${settings.hasProstitute ? 'повія, ' : ''}${civiliansNeeded} громадянин(ів). Настала перша ніч.`,
+      lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Настала перша ніч.`,
     }
 
     await setGameState(state)
