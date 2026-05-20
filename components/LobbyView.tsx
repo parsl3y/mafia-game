@@ -49,7 +49,9 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         }
       }
 
-      if (settingsRes.ok) {
+      // Налаштування оновлюємо з сервера тільки якщо ми НЕ хост
+      // (хост редагує локально, щоб кнопки реагували миттєво)
+      if (settingsRes.ok && !amHost) {
         const s = await settingsRes.json()
         setSettings(s)
       }
@@ -59,7 +61,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         if (game.phase === 'night' || game.phase === 'day') onGameStart()
       }
     } catch { /* ignore */ }
-  }, [playerId, onGameStart])
+  }, [playerId, onGameStart, amHost])
 
   useEffect(() => {
     fetchAll()
@@ -106,7 +108,8 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
     }
   }
 
-  const maxMafia = Math.max(1, Math.min(4, Math.floor((players.length - 1) / 2)))
+  // maxMafia: мін 1, макс 4, і не більше ніж (players-2)/2 щоб місту завжди більше
+  const maxMafia = Math.min(4, Math.max(1, Math.floor((Math.max(players.length, 3) - 2) / 2)))
 
   return (
     <div className="lobby-screen">
@@ -143,95 +146,91 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           </div>
         </div>
 
-        {/* Налаштування гри — видимі всім, редагує лише хост */}
-        <div className="settings-section">
-          <div className="settings-title">
-            ⚙️ Налаштування гри
-            {saving && <span className="settings-saving">збереження...</span>}
-          </div>
-
-          {/* Кількість мафії */}
-          <div className="setting-row">
-            <div className="setting-info">
-              <span className="setting-label">🔫 Кількість мафії</span>
-              <span className="setting-sub">Макс. для {players.length} гравців: {maxMafia}</span>
+        {/* Налаштування гри — тільки для хоста */}
+        {amHost && (
+          <div className="settings-section">
+            <div className="settings-title">
+              ⚙️ Налаштування гри
+              {saving && <span className="settings-saving">збереження...</span>}
             </div>
-            <div className="mafia-counter">
-              {amHost && (
+
+            {/* Кількість мафії */}
+            <div className="setting-row">
+              <div className="setting-info">
+                <span className="setting-label">🔫 Кількість мафії</span>
+                <span className="setting-sub">Макс. для {players.length} гравців: {maxMafia}</span>
+              </div>
+              <div className="mafia-counter">
                 <button
                   className="counter-btn"
                   onClick={() => saveSettings({ ...settings, mafiaCount: Math.max(1, settings.mafiaCount - 1) })}
                   disabled={settings.mafiaCount <= 1}
                 >−</button>
-              )}
-              <span className="counter-value">{settings.mafiaCount}</span>
-              {amHost && (
+                <span className="counter-value">{settings.mafiaCount}</span>
                 <button
                   className="counter-btn"
                   onClick={() => saveSettings({ ...settings, mafiaCount: Math.min(maxMafia, settings.mafiaCount + 1) })}
                   disabled={settings.mafiaCount >= maxMafia}
                 >+</button>
-              )}
+              </div>
+            </div>
+
+            {/* Обов'язкові ролі */}
+            <div className="setting-row setting-disabled">
+              <div className="setting-info">
+                <span className="setting-label">🔍 Шериф</span>
+                <span className="setting-sub">Обов'язкова роль</span>
+              </div>
+              <div className="toggle toggle-on toggle-locked">✓ Завжди</div>
+            </div>
+
+            <div className="setting-row setting-disabled">
+              <div className="setting-info">
+                <span className="setting-label">👤 Громадянин</span>
+                <span className="setting-sub">Обов'язкова роль</span>
+              </div>
+              <div className="toggle toggle-on toggle-locked">✓ Завжди</div>
+            </div>
+
+            {/* Лікар */}
+            <div className="setting-row">
+              <div className="setting-info">
+                <span className="setting-label">💉 Лікар</span>
+                <span className="setting-sub">Опціональна роль</span>
+              </div>
+              <button
+                className={`toggle ${settings.hasDoctor ? 'toggle-on' : 'toggle-off'}`}
+                onClick={() => saveSettings({ ...settings, hasDoctor: !settings.hasDoctor })}
+              >
+                {settings.hasDoctor ? 'Увімк.' : 'Вимк.'}
+              </button>
+            </div>
+
+            {/* Повія */}
+            <div className="setting-row">
+              <div className="setting-info">
+                <span className="setting-label">💋 Повія</span>
+                <span className="setting-sub">Опціональна роль</span>
+              </div>
+              <button
+                className={`toggle ${settings.hasProstitute ? 'toggle-on' : 'toggle-off'}`}
+                onClick={() => saveSettings({ ...settings, hasProstitute: !settings.hasProstitute })}
+              >
+                {settings.hasProstitute ? 'Увімк.' : 'Вимк.'}
+              </button>
+            </div>
+
+            {/* Склад */}
+            <div className="role-summary">
+              <span className="role-summary-label">Склад гри:</span>
+              <span>🔫×{settings.mafiaCount}</span>
+              <span>🔍×1</span>
+              {settings.hasDoctor && <span>💉×1</span>}
+              {settings.hasProstitute && <span>💋×1</span>}
+              <span>👤×{Math.max(0, players.length - settings.mafiaCount - 1 - (settings.hasDoctor ? 1 : 0) - (settings.hasProstitute ? 1 : 0))}</span>
             </div>
           </div>
-
-          {/* Обов'язкові ролі */}
-          <div className="setting-row setting-disabled">
-            <div className="setting-info">
-              <span className="setting-label">🔍 Шериф</span>
-              <span className="setting-sub">Обов'язкова роль</span>
-            </div>
-            <div className="toggle toggle-on toggle-locked">✓ Завжди</div>
-          </div>
-
-          <div className="setting-row setting-disabled">
-            <div className="setting-info">
-              <span className="setting-label">👤 Громадянин</span>
-              <span className="setting-sub">Обов'язкова роль</span>
-            </div>
-            <div className="toggle toggle-on toggle-locked">✓ Завжди</div>
-          </div>
-
-          {/* Лікар */}
-          <div className="setting-row">
-            <div className="setting-info">
-              <span className="setting-label">💉 Лікар</span>
-              <span className="setting-sub">Опціональна роль</span>
-            </div>
-            <button
-              className={`toggle ${settings.hasDoctor ? 'toggle-on' : 'toggle-off'}`}
-              onClick={() => amHost && saveSettings({ ...settings, hasDoctor: !settings.hasDoctor })}
-              disabled={!amHost}
-            >
-              {settings.hasDoctor ? 'Увімк.' : 'Вимк.'}
-            </button>
-          </div>
-
-          {/* Повія */}
-          <div className="setting-row">
-            <div className="setting-info">
-              <span className="setting-label">💋 Повія</span>
-              <span className="setting-sub">Опціональна роль</span>
-            </div>
-            <button
-              className={`toggle ${settings.hasProstitute ? 'toggle-on' : 'toggle-off'}`}
-              onClick={() => amHost && saveSettings({ ...settings, hasProstitute: !settings.hasProstitute })}
-              disabled={!amHost}
-            >
-              {settings.hasProstitute ? 'Увімк.' : 'Вимк.'}
-            </button>
-          </div>
-
-          {/* Склад */}
-          <div className="role-summary">
-            <span className="role-summary-label">Склад гри:</span>
-            <span>🔫×{settings.mafiaCount}</span>
-            <span>🔍×1</span>
-            {settings.hasDoctor && <span>💉×1</span>}
-            {settings.hasProstitute && <span>💋×1</span>}
-            <span>👤×{Math.max(0, players.length - settings.mafiaCount - 1 - (settings.hasDoctor ? 1 : 0) - (settings.hasProstitute ? 1 : 0))}</span>
-          </div>
-        </div>
+        )}
 
         {error && <p className="lobby-error">{error}</p>}
 
