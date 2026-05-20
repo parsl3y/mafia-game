@@ -482,6 +482,17 @@ html, body {
 .pc-name   { font-size: .85rem; font-weight: 600; word-break: break-word; }
 .pc-role   { font-size: .75rem; margin-top: 4px; font-weight: 500; }
 .pc-host   { position: absolute; top: 6px; right: 8px; font-size: .85rem; }
+.pc-slot   {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: .7rem;
+  font-weight: 700;
+  color: var(--text2);
+  background: rgba(255,255,255,.06);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
 
 /* Action Panel */
 .action-panel {

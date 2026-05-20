@@ -7,6 +7,7 @@ interface Player {
   name: string
   isHost: boolean
   isAlive: boolean
+  slotNumber: number
   joinedAt: number
 }
 
@@ -154,9 +155,9 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
             Гравці <span className="count-badge">{players.length}/10</span>
           </div>
           <div className="players-list">
-            {players.map((p, i) => (
+            {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => (
               <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''}`}>
-                <span className="player-num">{i + 1}</span>
+                <span className="player-num">#{p.slotNumber ?? '?'}</span>
                 <span className="player-avatar">{p.isHost ? '👑' : '👤'}</span>
                 <span className="player-name">{p.name}</span>
                 {p.id === playerId && <span className="player-tag">Ви</span>}

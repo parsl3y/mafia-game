@@ -31,6 +31,7 @@ export interface Player {
   role: Role | null
   isAlive: boolean
   isHost: boolean
+  slotNumber: number  // постійний номер 1..N, не змінюється при виході інших
   joinedAt: number
 }
 

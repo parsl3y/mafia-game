@@ -32,12 +32,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Гравець з таким іменем вже є в лобі" }, { status: 409 })
     }
 
+    // Знаходимо найменший вільний номер (1, 2, 3...)
+    const usedSlots = new Set(existing.map(p => p.slotNumber ?? 0))
+    let slotNumber = 1
+    while (usedSlots.has(slotNumber)) slotNumber++
+
     const player: Player = {
       id: uuidv4(),
       name: trimmedName,
       role: null,
       isAlive: true,
-      isHost: existing.length === 0, // перший — хост
+      isHost: existing.length === 0,
+      slotNumber,
       joinedAt: Date.now(),
     }
 

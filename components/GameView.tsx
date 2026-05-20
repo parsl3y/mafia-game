@@ -11,6 +11,7 @@ interface Player {
   role: Role | null
   isAlive: boolean
   isHost: boolean
+  slotNumber?: number
 }
 
 interface GameState {
@@ -185,10 +186,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
         {/* Players grid */}
         <div className="players-grid">
-          {game.players.map(p => {
-            const isMine = p.id === playerId
+          {[...game.players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map(p => {
+            const isMine    = p.id === playerId
             const isSelected = selectedTarget === p.id
-            const canSelect = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
+            const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
 
             return (
               <div
@@ -201,6 +202,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 `}
                 onClick={() => canSelect && setSelectedTarget(p.id === selectedTarget ? null : p.id)}
               >
+                {p.slotNumber && <div className="pc-slot">#{p.slotNumber}</div>}
                 <div className="pc-avatar">{p.isAlive ? '👤' : '💀'}</div>
                 <div className="pc-name">{p.name}</div>
                 {isMine && myMeta && (
@@ -208,7 +210,6 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     {myMeta.icon} {myMeta.label}
                   </div>
                 )}
-                {/* Мафія бачить інших мафіозі */}
                 {!isMine && p.role === 'mafia' && myRole === 'mafia' && (
                   <div className="pc-role" style={{ color: '#ef4444' }}>🔫 Мафія</div>
                 )}
