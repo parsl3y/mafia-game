@@ -55,8 +55,11 @@ function getClient(): RedisClient {
     const client = new UpstashRedis({ url: upstashUrl, token: upstashToken })
     return {
       get:  async (key) => {
-        const val = await client.get<string>(key)
-        return val ?? null
+        const val = await client.get(key)
+        if (val === null || val === undefined) return null
+        // Upstash auto-parses JSON → re-serialize to keep consistent string interface
+        if (typeof val === 'string') return val
+        return JSON.stringify(val)
       },
       set:  async (key, value, opts) =>
         opts?.ex ? client.set(key, value, { ex: opts.ex }) : client.set(key, value),
