@@ -13,6 +13,18 @@ import { Redis as UpstashRedis } from '@upstash/redis'
 export type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 export type GamePhase = 'lobby' | 'night' | 'day' | 'ended'
 
+export interface GameSettings {
+  mafiaCount: number    // кількість мафіозі (1–4)
+  hasDoctor: boolean    // чи є лікар
+  hasProstitute: boolean // чи є повія
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  mafiaCount: 1,
+  hasDoctor: true,
+  hasProstitute: false,
+}
+
 export interface Player {
   id: string
   name: string
@@ -96,8 +108,9 @@ function redis(): RedisClient {
 // ==============================
 // Keys
 // ==============================
-const LOBBY_KEY = 'mafia:lobby'
-const GAME_KEY  = 'mafia:game'
+const LOBBY_KEY    = 'mafia:lobby'
+const GAME_KEY     = 'mafia:game'
+const SETTINGS_KEY = 'mafia:settings'
 
 // ==============================
 // Lobby helpers
@@ -145,4 +158,23 @@ export async function setGameState(state: GameState): Promise<void> {
 
 export async function clearGameState(): Promise<void> {
   await redis().del(GAME_KEY)
+}
+
+// ==============================
+// Game settings helpers
+// ==============================
+
+export async function getGameSettings(): Promise<GameSettings> {
+  const raw = await redis().get(SETTINGS_KEY)
+  if (!raw) return { ...DEFAULT_SETTINGS }
+  const parsed = JSON.parse(raw)
+  return { ...DEFAULT_SETTINGS, ...parsed }
+}
+
+export async function setGameSettings(settings: GameSettings): Promise<void> {
+  await redis().set(SETTINGS_KEY, JSON.stringify(settings))
+}
+
+export async function clearGameSettings(): Promise<void> {
+  await redis().del(SETTINGS_KEY)
 }

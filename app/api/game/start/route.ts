@@ -1,23 +1,14 @@
 import { NextResponse } from 'next/server'
 import {
   getLobbyPlayers,
+  getGameSettings,
   setGameState,
   clearLobby,
+  clearGameSettings,
   type Player,
   type Role,
   type GameState,
 } from '@/lib/redis'
-
-const ROLE_DISTRIBUTION: Record<number, Role[]> = {
-  3:  ['mafia', 'sheriff', 'civilian'],
-  4:  ['mafia', 'sheriff', 'civilian', 'civilian'],
-  5:  ['mafia', 'mafia', 'sheriff', 'doctor', 'civilian'],
-  6:  ['mafia', 'mafia', 'sheriff', 'doctor', 'civilian', 'civilian'],
-  7:  ['mafia', 'mafia', 'sheriff', 'doctor', 'prostitute', 'civilian', 'civilian'],
-  8:  ['mafia', 'mafia', 'sheriff', 'doctor', 'prostitute', 'civilian', 'civilian', 'civilian'],
-  9:  ['mafia', 'mafia', 'mafia', 'sheriff', 'doctor', 'prostitute', 'civilian', 'civilian', 'civilian'],
-  10: ['mafia', 'mafia', 'mafia', 'sheriff', 'doctor', 'prostitute', 'civilian', 'civilian', 'civilian', 'civilian'],
-}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -28,15 +19,16 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-// POST /api/game/start — хост запускає гру, ролі роздаються рандомно
+// POST /api/game/start
 export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { hostId } = body
 
     const lobbyPlayers = await getLobbyPlayers()
+    const settings     = await getGameSettings()
 
-    // Перевірки
+    // Перевірки доступу
     if (!lobbyPlayers.some(p => p.id === hostId && p.isHost)) {
       return NextResponse.json({ error: 'Тільки хост може запустити гру' }, { status: 403 })
     }
@@ -49,9 +41,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Максимум 10 гравців' }, { status: 400 })
     }
 
-    // Розподіл ролей
-    const roleList = ROLE_DISTRIBUTION[count] || ROLE_DISTRIBUTION[10]
-    const shuffledRoles = shuffle(roleList)
+    // Будуємо список ролей на основі налаштувань
+    const roles: Role[] = []
+
+    // Обов'язкові ролі
+    for (let i = 0; i < settings.mafiaCount; i++) roles.push('mafia')
+    roles.push('sheriff')
+
+    // Опціональні
+    if (settings.hasDoctor)     roles.push('doctor')
+    if (settings.hasProstitute) roles.push('prostitute')
+
+    // Решта — громадяни
+    const specialCount = roles.length
+    const civiliansNeeded = count - specialCount
+    if (civiliansNeeded < 1) {
+      return NextResponse.json({
+        error: `Забагато спеціальних ролей для ${count} гравців. Зменшіть кількість мафії.`
+      }, { status: 400 })
+    }
+    for (let i = 0; i < civiliansNeeded; i++) roles.push('civilian')
+
+    // Перемішуємо і призначаємо
+    const shuffledRoles   = shuffle(roles)
     const shuffledPlayers = shuffle(lobbyPlayers)
 
     const players: Player[] = shuffledPlayers.map((p, i) => ({
@@ -61,21 +73,22 @@ export async function POST(req: Request) {
     }))
 
     const state: GameState = {
-      phase: 'night',
-      day: 1,
+      phase:             'night',
+      day:               1,
       players,
-      nightTarget: null,
-      nightProtected: null,
-      nightBlocked: null,
+      nightTarget:       null,
+      nightProtected:    null,
+      nightBlocked:      null,
       nightInvestigated: null,
-      votes: {},
-      killedLastNight: null,
-      winner: null,
-      lastEvent: 'Гра розпочата! Настала перша ніч.',
+      votes:             {},
+      killedLastNight:   null,
+      winner:            null,
+      lastEvent:         `Гра розпочата! ${settings.mafiaCount} мафія, ${settings.hasDoctor ? 'лікар, ' : ''}${settings.hasProstitute ? 'повія, ' : ''}${civiliansNeeded} громадянин(ів). Настала перша ніч.`,
     }
 
     await setGameState(state)
     await clearLobby()
+    await clearGameSettings()
 
     return NextResponse.json({ success: true, playerCount: count })
   } catch (err) {
