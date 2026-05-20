@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Player {
   id: string
@@ -25,13 +25,22 @@ interface Props {
 }
 
 export default function LobbyView({ playerId, playerName, isHost: initialHost, onGameStart, onLeave }: Props) {
-  const [players, setPlayers]   = useState<Player[]>([])
-  const [settings, setSettings] = useState<Settings>({ mafiaCount: 1, hasDoctor: true, hasProstitute: false })
-  const [error, setError]       = useState<string | null>(null)
-  const [starting, setStarting] = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [amHost, setAmHost]     = useState(initialHost)
+  const [players, setPlayers]     = useState<Player[]>([])
+  const [settings, setSettings]   = useState<Settings>({ mafiaCount: 1, hasDoctor: true, hasProstitute: false })
+  const [error, setError]         = useState<string | null>(null)
+  const [starting, setStarting]   = useState(false)
+  const [saving, setSaving]       = useState(false)
+  const [amHost, setAmHost]       = useState(initialHost)
 
+  // useRef — щоб fetchAll завжди бачив актуальне значення без перестворення
+  const amHostRef   = useRef(initialHost)
+  const settingsRef = useRef(settings)
+
+  // синхронізуємо ref зі state
+  useEffect(() => { amHostRef.current = amHost },    [amHost])
+  useEffect(() => { settingsRef.current = settings }, [settings])
+
+  // ─── Polling ───────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
       const [lobbyRes, settingsRes, gameRes] = await Promise.all([
@@ -42,16 +51,19 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
 
       if (lobbyRes.ok) {
         const d = await lobbyRes.json()
-        if (d.players) {
+        if (Array.isArray(d.players)) {
           setPlayers(d.players)
           const me = d.players.find((p: Player) => p.id === playerId)
-          if (me) setAmHost(me.isHost)
+          if (me !== undefined) {
+            amHostRef.current = me.isHost
+            setAmHost(me.isHost)
+          }
         }
       }
 
-      // Налаштування оновлюємо з сервера тільки якщо ми НЕ хост
-      // (хост редагує локально, щоб кнопки реагували миттєво)
-      if (settingsRes.ok && !amHost) {
+      // Налаштування з сервера беремо ТІЛЬКИ коли ми НЕ хост
+      // (хост редагує локально — щоб кнопки реагували миттєво)
+      if (settingsRes.ok && !amHostRef.current) {
         const s = await settingsRes.json()
         setSettings(s)
       }
@@ -60,19 +72,19 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         const game = await gameRes.json()
         if (game.phase === 'night' || game.phase === 'day') onGameStart()
       }
-    } catch { /* ignore */ }
-  }, [playerId, onGameStart, amHost])
+    } catch { /* ignore network errors */ }
+  }, [playerId, onGameStart]) // не залежить від amHost — читаємо через ref
 
   useEffect(() => {
     fetchAll()
-    const interval = setInterval(fetchAll, 2000)
-    return () => clearInterval(interval)
+    const id = setInterval(fetchAll, 2000)
+    return () => clearInterval(id)
   }, [fetchAll])
 
-  // Збереження налаштувань (тільки хост)
+  // ─── Збереження налаштувань ────────────────────────────────
   const saveSettings = async (next: Settings) => {
     setSettings(next)
-    if (!amHost) return
+    settingsRef.current = next
     setSaving(true)
     try {
       await fetch('/api/lobby/settings', {
@@ -108,21 +120,35 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
     }
   }
 
-  // maxMafia: мін 1, макс 4, і не більше ніж (players-2)/2 щоб місту завжди більше
-  const maxMafia = Math.min(4, Math.max(1, Math.floor((Math.max(players.length, 3) - 2) / 2)))
+  // Максимум мафії: мін 1, макс 4, не більше ніж половина від (гравці - 1)
+  // Приклади: 3гр→1, 4гр→1, 5гр→2, 6гр→2, 7гр→3, 8гр→3, 9гр→4, 10гр→4
+  const n = Math.max(players.length, 3)
+  const maxMafia = Math.min(4, Math.max(1, Math.floor((n - 1) / 2)))
+
+  const civCount = Math.max(0,
+    players.length
+    - settings.mafiaCount
+    - 1 // sheriff
+    - (settings.hasDoctor ? 1 : 0)
+    - (settings.hasProstitute ? 1 : 0)
+  )
 
   return (
     <div className="lobby-screen">
       <div className="lobby-card">
+
+        {/* Header */}
         <header className="lobby-header">
           <div className="lobby-title-row">
             <h1 className="lobby-title">🎭 Лобі гри</h1>
             <button onClick={handleLeave} className="leave-btn">Вийти</button>
           </div>
-          <p className="lobby-you">Ви: <strong>{playerName}</strong>{amHost && ' 👑 (хост)'}</p>
+          <p className="lobby-you">
+            Ви: <strong>{playerName}</strong>{amHost && ' 👑 (хост)'}
+          </p>
         </header>
 
-        {/* Список гравців */}
+        {/* Гравці */}
         <div className="players-section">
           <div className="players-count">
             Гравці <span className="count-badge">{players.length}/10</span>
@@ -146,7 +172,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           </div>
         </div>
 
-        {/* Налаштування гри — тільки для хоста */}
+        {/* ─── Налаштування — ТІЛЬКИ для хоста ─── */}
         {amHost && (
           <div className="settings-section">
             <div className="settings-title">
@@ -154,28 +180,30 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
               {saving && <span className="settings-saving">збереження...</span>}
             </div>
 
-            {/* Кількість мафії */}
+            {/* Мафія */}
             <div className="setting-row">
               <div className="setting-info">
                 <span className="setting-label">🔫 Кількість мафії</span>
-                <span className="setting-sub">Макс. для {players.length} гравців: {maxMafia}</span>
+                <span className="setting-sub">
+                  1–{maxMafia} для {players.length} гравців
+                </span>
               </div>
               <div className="mafia-counter">
                 <button
                   className="counter-btn"
-                  onClick={() => saveSettings({ ...settings, mafiaCount: Math.max(1, settings.mafiaCount - 1) })}
+                  onClick={() => saveSettings({ ...settingsRef.current, mafiaCount: Math.max(1, settingsRef.current.mafiaCount - 1) })}
                   disabled={settings.mafiaCount <= 1}
                 >−</button>
                 <span className="counter-value">{settings.mafiaCount}</span>
                 <button
                   className="counter-btn"
-                  onClick={() => saveSettings({ ...settings, mafiaCount: Math.min(maxMafia, settings.mafiaCount + 1) })}
+                  onClick={() => saveSettings({ ...settingsRef.current, mafiaCount: Math.min(maxMafia, settingsRef.current.mafiaCount + 1) })}
                   disabled={settings.mafiaCount >= maxMafia}
                 >+</button>
               </div>
             </div>
 
-            {/* Обов'язкові ролі */}
+            {/* Шериф */}
             <div className="setting-row setting-disabled">
               <div className="setting-info">
                 <span className="setting-label">🔍 Шериф</span>
@@ -184,6 +212,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
               <div className="toggle toggle-on toggle-locked">✓ Завжди</div>
             </div>
 
+            {/* Громадянин */}
             <div className="setting-row setting-disabled">
               <div className="setting-info">
                 <span className="setting-label">👤 Громадянин</span>
@@ -200,7 +229,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
               </div>
               <button
                 className={`toggle ${settings.hasDoctor ? 'toggle-on' : 'toggle-off'}`}
-                onClick={() => saveSettings({ ...settings, hasDoctor: !settings.hasDoctor })}
+                onClick={() => saveSettings({ ...settingsRef.current, hasDoctor: !settingsRef.current.hasDoctor })}
               >
                 {settings.hasDoctor ? 'Увімк.' : 'Вимк.'}
               </button>
@@ -214,7 +243,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
               </div>
               <button
                 className={`toggle ${settings.hasProstitute ? 'toggle-on' : 'toggle-off'}`}
-                onClick={() => saveSettings({ ...settings, hasProstitute: !settings.hasProstitute })}
+                onClick={() => saveSettings({ ...settingsRef.current, hasProstitute: !settingsRef.current.hasProstitute })}
               >
                 {settings.hasProstitute ? 'Увімк.' : 'Вимк.'}
               </button>
@@ -222,21 +251,22 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
 
             {/* Склад */}
             <div className="role-summary">
-              <span className="role-summary-label">Склад гри:</span>
+              <span className="role-summary-label">Склад:</span>
               <span>🔫×{settings.mafiaCount}</span>
               <span>🔍×1</span>
-              {settings.hasDoctor && <span>💉×1</span>}
+              {settings.hasDoctor    && <span>💉×1</span>}
               {settings.hasProstitute && <span>💋×1</span>}
-              <span>👤×{Math.max(0, players.length - settings.mafiaCount - 1 - (settings.hasDoctor ? 1 : 0) - (settings.hasProstitute ? 1 : 0))}</span>
+              <span>👤×{civCount}</span>
             </div>
           </div>
         )}
 
         {error && <p className="lobby-error">{error}</p>}
 
+        {/* Footer */}
         <div className="lobby-footer">
           {players.length < 3 && (
-            <p className="lobby-hint">Потрібно мінімум <strong>3 гравці</strong> для початку</p>
+            <p className="lobby-hint">Потрібно мінімум <strong>3 гравці</strong></p>
           )}
           {amHost ? (
             <button
@@ -253,8 +283,11 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
 
         <div className="lobby-share">
           <p className="share-text">Поділіться посиланням з друзями:</p>
-          <code className="share-url">{typeof window !== 'undefined' ? window.location.origin : ''}</code>
+          <code className="share-url">
+            {typeof window !== 'undefined' ? window.location.origin : ''}
+          </code>
         </div>
+
       </div>
     </div>
   )
