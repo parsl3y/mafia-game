@@ -1,9 +1,49 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { LiveKitRoom, useTracks, VideoTrack, AudioTrack } from '@livekit/components-react'
+import { Track } from 'livekit-client'
+import '@livekit/components-styles'
 
 type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 type Phase = 'night' | 'day' | 'ended'
+
+function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, isAlive }: any) {
+  const tracks = useTracks([Track.Source.Camera, Track.Source.Microphone])
+  
+  const pTracks = tracks.filter(t => t.participant.identity === targetPlayerId)
+  const vTrack = pTracks.find(t => t.source === Track.Source.Camera)
+  const aTrack = pTracks.find(t => t.source === Track.Source.Microphone)
+
+  let canSeeAndHear = true
+  
+  if (gamePhase === 'night') {
+    if (isLocal) {
+      canSeeAndHear = true 
+    } else if (myRole === 'mafia' && targetRole === 'mafia') {
+      canSeeAndHear = true
+    } else {
+      canSeeAndHear = false
+    }
+  }
+
+  if (!isAlive && !isLocal) canSeeAndHear = false
+
+  if (!canSeeAndHear) return null
+
+  return (
+    <>
+      {vTrack && (
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', zIndex: 1 }}>
+          <VideoTrack trackRef={vTrack} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+      )}
+      {aTrack && !isLocal && (
+        <AudioTrack trackRef={aTrack} />
+      )}
+    </>
+  )
+}
 
 interface Player {
   id: string
@@ -137,6 +177,27 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const [notification, setNotification] = useState<string | null>(null)
   const [investigateResult, setInvestigateResult] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now())
+  const [lkToken, setLkToken] = useState<string | null>(null)
+
+  // Fetch LiveKit token once game ID is known
+  useEffect(() => {
+    if (game?.id && playerId && !lkToken) {
+      fetch('/api/livekit/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          room: `mafia-${game.id}`,
+          participantName: playerName,
+          participantIdentity: playerId
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.token) setLkToken(data.token)
+      })
+      .catch(console.error)
+    }
+  }, [game?.id, playerId, playerName, lkToken])
 
   // ─── Затримка одночасного загоряння ламп ───
   const [lampsRevealed, setLampsRevealed] = useState(false)
@@ -505,8 +566,25 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     onGameEnd()
   }
 
+  if (!lkToken) {
+    return (
+      <div className="game-screen phase-day" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <h2 style={{ color: 'var(--text)', textAlign: 'center' }}>Підключення до відеосервера... ⏳<br/><span style={{ fontSize: '1rem', opacity: 0.7 }}>Зачекайте секунду</span></h2>
+      </div>
+    )
+  }
+
+  const isPublishingMedia = iAmAlive && (game.phase !== 'night' || myRole === 'mafia')
+
   return (
-    <div className={`game-screen ${game.phase === 'night' ? 'phase-night' : game.phase === 'day' ? 'phase-day' : 'phase-ended'}`}>
+    <LiveKitRoom
+      video={isPublishingMedia}
+      audio={isPublishingMedia}
+      token={lkToken}
+      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+      connect={true}
+    >
+      <div className={`game-screen ${game.phase === 'night' ? 'phase-night' : game.phase === 'day' ? 'phase-day' : 'phase-ended'}`}>
 
       {/* Notification */}
       {notification && <div className="game-notification">{notification}</div>}
@@ -815,7 +893,15 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
 
                   {/* Аватар */}
-                  <div className="seat-avatar">
+                  <div className="seat-avatar" style={{ position: 'relative' }}>
+                    <PlayerMedia 
+                      targetPlayerId={p.id}
+                      isLocal={isMine}
+                      gamePhase={game.phase}
+                      myRole={myRole}
+                      targetRole={p.role}
+                      isAlive={p.isAlive}
+                    />
                     {!p.isAlive ? '💀' : isMine ? (myMeta?.icon ?? '👤') : '👤'}
                   </div>
 
@@ -1132,5 +1218,6 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
       </div>
     </div>
+    </LiveKitRoom>
   )
 }
