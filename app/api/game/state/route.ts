@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { getGameState } from '@/lib/redis'
+import { getGameState, setGameState } from '@/lib/redis'
+
 
 export const dynamic = 'force-dynamic'
 
