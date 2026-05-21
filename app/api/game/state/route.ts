@@ -107,11 +107,19 @@ export async function GET(req: Request) {
     // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
     const isHost = me?.isHost ?? false
     const isSheriff = me?.role === 'sheriff'
+
+    // Маскуємо lastEvent: прибираємо інформацію про перевірку шерифа для мирних і мафії
+    let maskedLastEvent = state.lastEvent
+    if (maskedLastEvent && !isHost && !isSheriff) {
+      maskedLastEvent = maskedLastEvent.replace(/\s*\[Шериф:.*?\]/, '')
+    }
+
     const responsePayload = {
       ...state,
       players: maskedPlayers,
       myRole: me?.role ?? null,
       nightActionsStatus,
+      lastEvent: maskedLastEvent,
       nightTarget: isHost ? state.nightTarget : null,
       nightProtected: isHost ? state.nightProtected : null,
       nightBlocked: isHost ? state.nightBlocked : null,
