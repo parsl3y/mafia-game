@@ -44,11 +44,11 @@ interface GameState {
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
-  mafia:      { icon: '🔫', label: 'Мафія',      color: '#ef4444', nightAction: 'kill' },
-  sheriff:    { icon: '🔍', label: 'Шериф',      color: '#3b82f6', nightAction: 'investigate' },
-  doctor:     { icon: '💉', label: 'Лікар',      color: '#22c55e', nightAction: 'heal' },
-  prostitute: { icon: '💋', label: 'Повія',      color: '#ec4899', nightAction: 'block' },
-  civilian:   { icon: '👤', label: 'Громадянин', color: '#94a3b8', nightAction: null },
+  mafia: { icon: '🔫', label: 'Мафія', color: '#ef4444', nightAction: 'kill' },
+  sheriff: { icon: '🔍', label: 'Шериф', color: '#3b82f6', nightAction: 'investigate' },
+  doctor: { icon: '💉', label: 'Лікар', color: '#22c55e', nightAction: 'heal' },
+  prostitute: { icon: '💋', label: 'Повія', color: '#ec4899', nightAction: 'block' },
+  civilian: { icon: '👤', label: 'Громадянин', color: '#94a3b8', nightAction: null },
 }
 
 // Web Audio API аналізатор гучності
@@ -79,7 +79,7 @@ function startVolumeAnalyser(stream: MediaStream, onVolume: (v: number) => void)
       onVolume(vol)
       requestAnimationFrame(check)
     }
-    
+
     check()
 
     return () => {
@@ -88,7 +88,7 @@ function startVolumeAnalyser(stream: MediaStream, onVolume: (v: number) => void)
         source.disconnect()
         analyser.disconnect()
         ctx.close()
-      } catch {}
+      } catch { }
     }
   } catch (err) {
     console.warn('Не вдалося запустити AudioContext:', err)
@@ -103,8 +103,8 @@ interface Props {
 }
 
 // ─── Розміщення по колу ───────────────────────────────────
-const TABLE_SIZE   = 560   // px (квадрат контейнера)
-const SEAT_RADIUS  = 220   // відстань від центру до картки
+const TABLE_SIZE = 560   // px (квадрат контейнера)
+const SEAT_RADIUS = 220   // відстань від центру до картки
 const TABLE_RADIUS = 100   // радіус круглого стола
 
 function getSeatPos(index: number, total: number) {
@@ -119,13 +119,18 @@ function getSeatPos(index: number, total: number) {
 }
 
 export default function GameView({ playerId, playerName, onGameEnd }: Props) {
-  const [game, setGame]                     = useState<GameState | null>(null)
+  const [game, setGame] = useState<GameState | null>(null)
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
-  const [actionDone, setActionDone]         = useState(false)
-  const [phaseAdvanced, setPhaseAdvanced]   = useState(false)
-  const [notification, setNotification]     = useState<string | null>(null)
+  const [actionDone, setActionDone] = useState(false)
+  const [phaseAdvanced, setPhaseAdvanced] = useState(false)
+  const [notification, setNotification] = useState<string | null>(null)
   const [investigateResult, setInvestigateResult] = useState<string | null>(null)
-  const [now, setNow]                       = useState(Date.now())
+  const [now, setNow] = useState(Date.now())
+
+  // ─── Затримка одночасного загоряння ламп ───
+  const [lampsRevealed, setLampsRevealed] = useState(false)
+  const lampsTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lampsAllDoneRef = useRef(false)
 
   // WebRTC / PeerJS Голосовий чат
   const [micStatus, setMicStatus] = useState<'muted' | 'speaking' | 'connecting'>('muted')
@@ -157,9 +162,37 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setActionDone(false)
     setPhaseAdvanced(false)
     setInvestigateResult(null)
+    // Скидаємо стан ламп при зміні фази
+    setLampsRevealed(false)
+    lampsAllDoneRef.current = false
+    if (lampsTimerRef.current) {
+      clearTimeout(lampsTimerRef.current)
+      lampsTimerRef.current = null
+    }
     if (game.lastEvent) showNotif(game.lastEvent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.phase])
+
+  // ─── Ефект: коли всі нічні ходи зроблені — запускаємо рандомну затримку 5-15 сек, потім загоряються всі лампи разом ───
+  useEffect(() => {
+    if (!game || game.phase !== 'night') return
+    const s = game.nightActionsStatus
+    const allDone = s
+      ? (!s.mafia.required || s.mafia.done) &&
+        (!s.sheriff.required || s.sheriff.done) &&
+        (!s.doctor.required || s.doctor.done) &&
+        (!s.prostitute.required || s.prostitute.done)
+      : true
+
+    if (allDone && !lampsAllDoneRef.current) {
+      lampsAllDoneRef.current = true
+      const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс
+      lampsTimerRef.current = setTimeout(() => {
+        setLampsRevealed(true)
+      }, delay)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.nightActionsStatus, game?.phase])
 
 
 
@@ -203,7 +236,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         stream.getAudioTracks().forEach(t => t.enabled = false)
         setLocalStream(stream)
-        ;(window as any).localAudioStream = stream
+          ; (window as any).localAudioStream = stream
       }).catch(err => console.error('Помилка доступу до мікрофона:', err))
     }
 
@@ -211,7 +244,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const initPeer = () => {
       const gameId = game.id
       const peerId = `mafia-${gameId}-${playerId}`
-      
+
       console.log('Ініціалізуємо PeerJS:', peerId)
       const peer = new (window as any).Peer(peerId, {
         debug: 2,
@@ -237,12 +270,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
       peer.on('call', (incomingCall: any) => {
         console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
-        
+
         // Передаємо локальний стрім (який зараз вимкнено/замучено), щоб WebRTC успішно 
         // домовився про двосторонній зв'язок на будь-якому пристрої (включаючи iOS, Safari, Chrome)
         const currentStream = localStream || (window as any).localAudioStream
         incomingCall.answer(currentStream)
-        
+
         incomingCall.on('stream', (remoteStream: MediaStream) => {
           console.log('Отримано аудіо потік промовця!')
           let audio = audioRef.current
@@ -363,7 +396,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       if (callsRef.current.length > 0) {
         console.log('🔇 Промова закінчилась. Мутимо мікрофон та закриваємо з’єднання.')
         callsRef.current.forEach(c => {
-          try { c.close() } catch {}
+          try { c.close() } catch { }
         })
         callsRef.current = []
       }
@@ -392,7 +425,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     await sendAction(meta.nightAction, selectedTarget)
     setActionDone(true)
     if (game.myRole === 'sheriff') {
-      const res  = await fetch(`/api/game/state?playerId=${playerId}`)
+      const res = await fetch(`/api/game/state?playerId=${playerId}`)
       const data = await res.json()
       const match = data.lastEvent?.match(/\[Шериф: (.+)\]/)
       if (match) setInvestigateResult(match[1])
@@ -422,21 +455,24 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     )
   }
 
-  const me          = game.players.find(p => p.id === playerId)
-  const iAmAlive    = me?.isAlive ?? false
-  const myRole      = game.myRole
-  const myMeta      = myRole ? ROLE_META[myRole] : null
+  const me = game.players.find(p => p.id === playerId)
+  const iAmAlive = me?.isAlive ?? false
+  const myRole = game.myRole
+  const myMeta = myRole ? ROLE_META[myRole] : null
   const alivePlayers = game.players.filter(p => p.isAlive && p.id !== playerId)
-  const isHost      = me?.isHost ?? false
+  const isHost = me?.isHost ?? false
 
-  // Перевіряємо чи всі активні ролі зробили свій хід
+  // Перевіряємо чи всі активні ролі зробили свій хід (реальний стан)
   const s = game.nightActionsStatus
-  const allNightActionsDone = s
+  const allNightActionsReallyDone = s
     ? (!s.mafia.required || s.mafia.done) &&
-      (!s.sheriff.required || s.sheriff.done) &&
-      (!s.doctor.required || s.doctor.done) &&
-      (!s.prostitute.required || s.prostitute.done)
+    (!s.sheriff.required || s.sheriff.done) &&
+    (!s.doctor.required || s.doctor.done) &&
+    (!s.prostitute.required || s.prostitute.done)
     : true
+
+  // Для UI та кнопок використовуємо "відкладений" стан (лампи загорілися)
+  const allNightActionsDone = lampsRevealed
 
   // Сортуємо за slotNumber → правильний порядок за годинниковою стрілкою
   const sortedPlayers = [...game.players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
@@ -505,15 +541,15 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               Гравець <strong>{game.forceEndRequestedBy}</strong> намагається приєднатись до лобі та просить завершити поточну гру.
             </p>
             <div className="pause-modal-buttons" style={{ marginTop: '16px' }}>
-              <button 
-                className="confirm-btn" 
-                style={{ backgroundColor: '#ef4444', color: 'white' }} 
+              <button
+                className="confirm-btn"
+                style={{ backgroundColor: '#ef4444', color: 'white' }}
                 onClick={() => sendAction('confirm_force_end')}
               >
                 🛑 Завершити гру
               </button>
-              <button 
-                className="reject-btn" 
+              <button
+                className="reject-btn"
                 onClick={() => sendAction('reject_force_end')}
               >
                 ▶️ Продовжити гру
@@ -529,9 +565,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         <header className="game-header">
           <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div className="game-phase-badge">
-              {game.phase === 'night'  && '🌙 Ніч '   + game.day}
-              {game.phase === 'day'    && '☀️ День '   + game.day}
-              {game.phase === 'ended'  && '🏁 Гра завершена'}
+              {game.phase === 'night' && '🌙 Ніч ' + game.day}
+              {game.phase === 'day' && '☀️ День ' + game.day}
+              {game.phase === 'ended' && '🏁 Гра завершена'}
             </div>
             {game.phase !== 'ended' && (
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -539,11 +575,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   ⏸️ Пауза
                 </button>
                 {isHost && (
-                  <button 
-                    className="pause-trigger-btn" 
-                    style={{ 
-                      backgroundColor: 'rgba(239, 68, 68, 0.12)', 
-                      color: '#ef4444', 
+                  <button
+                    className="pause-trigger-btn"
+                    style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                      color: '#ef4444',
                       borderColor: 'rgba(239, 68, 68, 0.3)',
                       transition: 'all 0.2s ease'
                     }}
@@ -600,8 +636,8 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
             <div className="round-table" style={{ width: TABLE_RADIUS * 2, height: TABLE_RADIUS * 2, borderRadius: '50%' }}>
               {game.phase === 'day' && game.activeSpeakerId ? (() => {
                 const activeSpeaker = game.players.find((p: any) => p.id === game.activeSpeakerId)
-                const remaining = game.speakerTimerStartedAt 
-                  ? Math.max(0, Math.ceil((60_000 - (now - game.speakerTimerStartedAt)) / 1000)) 
+                const remaining = game.speakerTimerStartedAt
+                  ? Math.max(0, Math.ceil((60_000 - (now - game.speakerTimerStartedAt)) / 1000))
                   : 60
 
                 return (
@@ -610,7 +646,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     <div style={{ fontSize: '0.88rem', fontWeight: 'bold', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0 6px 0', color: '#60a5fa' }}>
                       {activeSpeaker ? activeSpeaker.name : 'Голос...'}
                     </div>
-                    
+
                     {game.speakerTimerStartedAt ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <div style={{ fontSize: '1.8rem', fontWeight: 800, fontFamily: 'monospace', color: remaining <= 10 ? '#ef4444' : '#22c55e', textShadow: remaining <= 10 ? '0 0 10px rgba(239, 68, 68, 0.5)' : 'none', lineHeight: 1 }}>
@@ -677,30 +713,30 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
             {/* Гравці навколо */}
             {sortedPlayers.map((p, i) => {
-              const { x, y }   = getSeatPos(i, sortedPlayers.length)
-              const isMine     = p.id === playerId
+              const { x, y } = getSeatPos(i, sortedPlayers.length)
+              const isMine = p.id === playerId
               const isSelected = selectedTarget === p.id
-              const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone && !game.activeSpeakerId
+              const canSelect = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone && !game.activeSpeakerId
               // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat (заморожено на паузі)
-              const silentMs   = now - (p.lastSeen ?? now)
-              const showTimer  = silentMs > 30_000 && p.isAlive && !game.isPaused
-              const secsLeft   = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
+              const silentMs = now - (p.lastSeen ?? now)
+              const showTimer = silentMs > 30_000 && p.isAlive && !game.isPaused
+              const secsLeft = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
 
 
               return (
                 <div
                   key={p.id}
                   className={`player-seat
-                    ${!p.isAlive   ? 'seat-dead'     : ''}
-                    ${isMine       ? 'seat-self'     : ''}
-                    ${isSelected   ? 'seat-selected' : ''}
-                    ${canSelect    ? 'seat-selectable' : ''}
-                    ${showTimer    ? 'seat-leaving'  : ''}
+                    ${!p.isAlive ? 'seat-dead' : ''}
+                    ${isMine ? 'seat-self' : ''}
+                    ${isSelected ? 'seat-selected' : ''}
+                    ${canSelect ? 'seat-selectable' : ''}
+                    ${showTimer ? 'seat-leaving' : ''}
                     ${(p.id === game.activeSpeakerId && game.speakerTimerStartedAt) ? 'seat-speaking' : ''}
                   `}
                   style={{
-                    left:      x,
-                    top:       y,
+                    left: x,
+                    top: y,
                     transform: 'translate(-50%, -50%)',
                     ...(p.id === game.activeSpeakerId ? {
                       '--volume-scale': `${1.05 + (speakerVolume / 100) * 0.45}`
@@ -776,10 +812,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   ) : (
                     <>
                       <p className="action-hint">
-                        {myMeta?.nightAction === 'kill'        && 'Оберіть жертву для вбивства:'}
-                        {myMeta?.nightAction === 'heal'        && 'Оберіть гравця для захисту:'}
+                        {myMeta?.nightAction === 'kill' && 'Оберіть жертву для вбивства:'}
+                        {myMeta?.nightAction === 'heal' && 'Оберіть гравця для захисту:'}
                         {myMeta?.nightAction === 'investigate' && 'Оберіть гравця для перевірки:'}
-                        {myMeta?.nightAction === 'block'       && 'Оберіть гравця для блокування:'}
+                        {myMeta?.nightAction === 'block' && 'Оберіть гравця для блокування:'}
                       </p>
                       {investigateResult && (
                         <div className="investigate-result">🔍 {investigateResult}</div>
@@ -801,24 +837,28 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       <div style={{ fontSize: '0.88rem', fontWeight: 600, color: allNightActionsDone ? '#22c55e' : '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                         {allNightActionsDone ? '✅ Всі нічні ходи завершено' : '⏳ Очікуємо завершення нічних ходів...'}
                       </div>
-                      
-                      {/* Анонімні кружки-індикатори для приховування живих/мертвих ролей */}
+
+                      {/* Анонімні кружки-індикатори — всі загоряються ОДНОЧАСНО після затримки */}
                       <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '4px' }}>
-                        {game.nightActionsStatus && Object.entries(game.nightActionsStatus).map(([roleKey, item]: [string, any]) => (
-                          <div
-                            key={roleKey}
-                            style={{
-                              width: '10px',
-                              height: '10px',
-                              borderRadius: '50%',
-                              backgroundColor: item.done ? '#22c55e' : '#f59e0b',
-                              opacity: item.done ? 1 : 0.4,
-                              boxShadow: item.done ? '0 0 8px #22c55e' : '0 0 4px #f59e0b',
-                              transition: 'all 0.3s ease'
-                            }}
-                            title={item.done ? 'Хід зроблено' : 'Очікуємо хід...'}
-                          />
-                        ))}
+                        {game.nightActionsStatus && Object.entries(game.nightActionsStatus).map(([roleKey, item]: [string, any]) => {
+                          // Показуємо "зелений" тільки коли lampsRevealed = true (всі одночасно)
+                          const showDone = lampsRevealed && item.done
+                          return (
+                            <div
+                              key={roleKey}
+                              style={{
+                                width: '10px',
+                                height: '10px',
+                                borderRadius: '50%',
+                                backgroundColor: showDone ? '#22c55e' : '#f59e0b',
+                                opacity: showDone ? 1 : 0.4,
+                                boxShadow: showDone ? '0 0 8px #22c55e' : '0 0 4px #f59e0b',
+                                transition: 'all 0.6s ease'
+                              }}
+                              title={showDone ? 'Хід зроблено' : 'Очікуємо хід...'}
+                            />
+                          )
+                        })}
                       </div>
                     </div>
                     <button
@@ -841,7 +881,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   <>
                     <h2 className="action-title">🎙️ Коло виступів</h2>
                     <p className="action-hint">
-                      {game.activeSpeakerId === playerId 
+                      {game.activeSpeakerId === playerId
                         ? '🔥 Зараз ваша черга виступати! Розкажіть про себе за 1 хвилину.'
                         : 'Вислухайте промову іншого гравця. Голосування розпочнеться після виступів.'
                       }
