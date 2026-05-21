@@ -226,6 +226,9 @@ html, body {
   background: rgba(245,158,11,.06) !important;
   animation: leaving-pulse 1s ease-in-out infinite;
 }
+.player-leaving .player-name {
+  color: #f59e0b !important;
+}
 
 @keyframes leaving-pulse {
   0%,100% { border-color: rgba(245,158,11,.3); }
@@ -531,6 +534,9 @@ html, body {
   background: rgba(245,158,11,.07) !important;
   animation: seat-pulse 1.2s ease-in-out infinite;
 }
+.seat-leaving .seat-name {
+  color: #f59e0b !important;
+}
 @keyframes seat-pulse {
   0%,100% { border-color: rgba(245,158,11,.3); }
   50%      { border-color: rgba(245,158,11,.9); box-shadow: 0 0 12px rgba(245,158,11,.3); }
@@ -538,9 +544,15 @@ html, body {
 
 .seat-timer {
   position: absolute;
-  top: 4px;
-  right: 6px;
-  font-size: .7rem;
+  top: 3px;
+  right: 4px;
+  font-size: .62rem;
+  font-weight: 700;
+  color: #f59e0b;
+  background: rgba(245,158,11,.15);
+  border: 1px solid rgba(245,158,11,.3);
+  border-radius: 99px;
+  padding: 1px 5px;
   animation: hourglass-blink .8s ease-in-out infinite;
 }
 @keyframes hourglass-blink {

@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
 
-const TIMEOUT_MS = 10_000 // 10 секунд без heartbeat → виключення з лобі
+const TIMEOUT_MS = 65_000 // 65 секунд (5 сек буфер + 60 сек зворотний відлік)
 
 // Видаляємо гравців що зникли > 10 сек тому, перепризначаємо хоста
 async function evictStalePlayers(players: Player[]): Promise<Player[]> {

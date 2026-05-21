@@ -187,8 +187,8 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           <div className="players-list">
             {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => {
               const silentMs  = now - (p.lastSeen ?? now)
-              const isWarning = silentMs > 5_000 && p.id !== playerId  // > 5 сек
-              const secsLeft  = Math.max(0, Math.ceil((10_000 - silentMs) / 1000))
+              const isWarning = silentMs > 5_000 // > 5 сек без heartbeat = AFK
+              const secsLeft  = Math.max(0, Math.ceil((65_000 - silentMs) / 1000))
 
               return (
                 <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''} ${isWarning ? 'player-leaving' : ''}`}>
@@ -198,7 +198,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
                   {p.id === playerId && <span className="player-tag">Ви</span>}
                   {isWarning && (
                     <span className="player-timeout" title={`Викине через ${secsLeft}с`}>
-                      ⏳
+                      ⏳ {secsLeft}с
                     </span>
                   )}
                 </div>

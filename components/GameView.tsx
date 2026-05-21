@@ -99,7 +99,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     return () => clearInterval(id)
   }, [])
 
-  // Heartbeat кожні 20 сек — повідомляє сервер що гравець онлайн
+  // Heartbeat кожні 4 сек — повідомляє сервер що гравець онлайн
   useEffect(() => {
     const beat = async () => {
       try {
@@ -112,7 +112,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       } catch { /* ignore */ }
     }
     beat()
-    const id = setInterval(beat, 20_000)
+    const id = setInterval(beat, 4000)
     return () => clearInterval(id)
   }, [playerId, onGameEnd])
 
@@ -232,9 +232,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               const isMine     = p.id === playerId
               const isSelected = selectedTarget === p.id
               const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
-              // Таймаут гравця у грі — 5 хв, іконка після 2.5 хв
+              // Таймаут гравця у грі — 1 хв, іконка та жовтий нік одразу (після 5 сек без heartbeat)
               const silentMs   = now - (p.lastSeen ?? now)
-              const showTimer  = silentMs > 150_000 && !isMine && p.isAlive
+              const showTimer  = silentMs > 5_000 && p.isAlive
+              const secsLeft   = Math.max(0, Math.ceil((65_000 - silentMs) / 1000))
 
               return (
                 <div
@@ -258,8 +259,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                   {/* Іконка таймауту */}
                   {showTimer && (
-                    <div className="seat-timer" title="Гравець неактивний майже 5 хв">⏳</div>
+                    <div className="seat-timer" title={`Викине через ${secsLeft}с`}>⏳ {secsLeft}с</div>
                   )}
+
 
                   {/* Аватар */}
                   <div className="seat-avatar">

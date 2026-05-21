@@ -16,10 +16,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
-    // Очищення офлайн гравців у грі (> 5 хв)
+    // Очищення офлайн гравців у грі (> 1 хв)
     const now = Date.now()
-    const GAME_TIMEOUT_MS = 5 * 60 * 1000
+    const GAME_TIMEOUT_MS = 65 * 1000
     let stateChanged = false
+
 
     state.players = state.players.map(p => {
       // Якщо гравець живий, але не надсилав heartbeat більше 5 хвилин
