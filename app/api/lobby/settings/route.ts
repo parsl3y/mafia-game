@@ -20,10 +20,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Тільки хост може змінювати налаштування' }, { status: 403 })
     }
 
-    // Валідація
+    // Валідація — дозволяємо 0 (мафія вимкнена)
     const count = players.length || 3
-    const maxMafia = Math.max(1, Math.floor((count - 1) / 2))
-    const safeMafiaCount = Math.min(Math.max(1, Number(mafiaCount) || 1), Math.min(maxMafia, 4))
+    const maxMafia = Math.min(4, Math.max(1, Math.floor((count - 1) / 2)))
+    const raw = Number(mafiaCount)
+    const safeMafiaCount = Math.min(Math.max(0, isNaN(raw) ? 0 : raw), maxMafia)
 
     const settings: GameSettings = {
       mafiaCount: safeMafiaCount,
