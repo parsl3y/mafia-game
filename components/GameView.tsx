@@ -651,7 +651,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
             {/* Круглий стіл по центру */}
             <div className="round-table" style={{ width: TABLE_RADIUS * 2, height: TABLE_RADIUS * 2, borderRadius: '50%' }}>
-              {game.phase === 'day' && (game.activeSpeakerId || game.defensePlayerId) ? (() => {
+              {game.phase === 'day' && ((game.votingPhase === 'speeches' && game.activeSpeakerId) || (game.votingPhase === 'defense' && game.defensePlayerId)) ? (() => {
                 const activeId = game.votingPhase === 'defense' ? game.defensePlayerId : game.activeSpeakerId
                 const activeSpeaker = game.players.find((p: any) => p.id === activeId)
                 const startTime = game.votingPhase === 'defense' ? game.defenseTimerStartedAt : game.speakerTimerStartedAt

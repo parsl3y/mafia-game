@@ -151,6 +151,9 @@ export async function POST(req: Request) {
     } else if (state.phase === 'day') {
       // ─── Speech phase actions ───
       if (action === 'start_speech') {
+        if (state.votingPhase !== 'speeches') {
+          return NextResponse.json({ error: 'Зараз не фаза виступів' }, { status: 400 })
+        }
         if (playerId !== state.activeSpeakerId) {
           return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
         }
