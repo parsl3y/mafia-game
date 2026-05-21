@@ -221,6 +221,34 @@ html, body {
 .player-me { border-color: var(--accent); background: rgba(124,58,237,.1); }
 .player-empty { opacity: .4; }
 
+.player-leaving {
+  border-color: rgba(245,158,11,.4) !important;
+  background: rgba(245,158,11,.06) !important;
+  animation: leaving-pulse 1s ease-in-out infinite;
+}
+
+@keyframes leaving-pulse {
+  0%,100% { border-color: rgba(245,158,11,.3); }
+  50%      { border-color: rgba(245,158,11,.8); }
+}
+
+.player-timeout {
+  font-size: .75rem;
+  font-weight: 700;
+  color: #f59e0b;
+  background: rgba(245,158,11,.15);
+  border: 1px solid rgba(245,158,11,.3);
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  animation: hourglass-blink .8s ease-in-out infinite;
+}
+
+@keyframes hourglass-blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
 .player-num { color: var(--text2); font-size: .8rem; min-width: 18px; }
 .player-avatar { font-size: 1.1rem; }
 .player-name { flex: 1; font-weight: 500; }

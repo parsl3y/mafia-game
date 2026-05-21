@@ -8,6 +8,7 @@ interface Player {
   isHost: boolean
   isAlive: boolean
   slotNumber: number
+  lastSeen: number
   joinedAt: number
 }
 
@@ -32,10 +33,17 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
   const [starting, setStarting]   = useState(false)
   const [saving, setSaving]       = useState(false)
   const [amHost, setAmHost]       = useState(initialHost)
+  const [now, setNow]             = useState(Date.now()) // для live-оновлення таймеру
 
   // useRef — щоб fetchAll завжди бачив актуальне значення без перестворення
   const amHostRef   = useRef(initialHost)
   const settingsRef = useRef(settings)
+
+  // Тікаємо щосекунди щоб таймер стану гравців оновлювався
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // синхронізуємо ref зі state
   useEffect(() => { amHostRef.current = amHost },    [amHost])
@@ -175,14 +183,25 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
             Гравці <span className="count-badge">{players.length}/10</span>
           </div>
           <div className="players-list">
-            {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => (
-              <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''}`}>
-                <span className="player-num">#{p.slotNumber ?? '?'}</span>
-                <span className="player-avatar">{p.isHost ? '👑' : '👤'}</span>
-                <span className="player-name">{p.name}</span>
-                {p.id === playerId && <span className="player-tag">Ви</span>}
-              </div>
-            ))}
+            {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => {
+              const silentMs  = now - (p.lastSeen ?? now)
+              const isWarning = silentMs > 5000 && p.id !== playerId // > 5 сек мовчить
+              const secsLeft  = Math.max(0, Math.ceil((10000 - silentMs) / 1000))
+
+              return (
+                <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''} ${isWarning ? 'player-leaving' : ''}`}>
+                  <span className="player-num">#{p.slotNumber ?? '?'}</span>
+                  <span className="player-avatar">{p.isHost ? '👑' : '👤'}</span>
+                  <span className="player-name">{p.name}</span>
+                  {p.id === playerId && <span className="player-tag">Ви</span>}
+                  {isWarning && (
+                    <span className="player-timeout" title={`Викине через ${secsLeft}с`}>
+                      ⏳ {secsLeft}с
+                    </span>
+                  )}
+                </div>
+              )
+            })}
             {Array.from({ length: Math.max(0, 3 - players.length) }).map((_, i) => (
               <div key={`empty-${i}`} className="player-row player-empty">
                 <span className="player-num">{players.length + i + 1}</span>
