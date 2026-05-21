@@ -31,8 +31,9 @@ export interface Player {
   role: Role | null
   isAlive: boolean
   isHost: boolean
-  slotNumber: number  // постійний номер 1..N, не змінюється при виході інших
+  slotNumber: number
   joinedAt: number
+  lastSeen: number  // timestamp останнього heartbeat
 }
 
 export interface GameState {
@@ -120,6 +121,10 @@ const SETTINGS_KEY = 'mafia:settings'
 export async function getLobbyPlayers(): Promise<Player[]> {
   const raw = await redis().get(LOBBY_KEY)
   return raw ? JSON.parse(raw) : []
+}
+
+export async function setLobbyPlayers(players: Player[]): Promise<void> {
+  await redis().set(LOBBY_KEY, JSON.stringify(players))
 }
 
 export async function addPlayerToLobby(player: Player): Promise<Player[]> {

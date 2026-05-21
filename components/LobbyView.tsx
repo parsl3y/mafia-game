@@ -82,6 +82,26 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
     return () => clearInterval(id)
   }, [fetchAll])
 
+  // ─── Heartbeat кожні 4 сек ────────────────────────────────
+  useEffect(() => {
+    const beat = async () => {
+      try {
+        const res = await fetch('/api/lobby/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerId }),
+        })
+        if (res.status === 404) {
+          // Сервер вже видалив нас (можливо через таймаут іншої сесії)
+          onLeave()
+        }
+      } catch { /* ignore */ }
+    }
+    beat() // одразу
+    const id = setInterval(beat, 4000)
+    return () => clearInterval(id)
+  }, [playerId, onLeave])
+
   // ─── Збереження налаштувань ────────────────────────────────
   const saveSettings = async (next: Settings) => {
     setSettings(next)
