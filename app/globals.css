@@ -463,15 +463,120 @@ html, body {
 }
 .restart-btn:hover { opacity: .85; }
 
-/* Players grid */
+/* ===================== CIRCULAR ARENA ===================== */
+.arena-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.circular-arena {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Круглий стіл по центру */
+.round-table {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 40% 35%, #1e3a2a, #0a1a10);
+  border: 2px solid rgba(34,197,94,.25);
+  box-shadow:
+    0 0 60px rgba(34,197,94,.08),
+    inset 0 0 40px rgba(0,0,0,.6),
+    0 0 0 8px rgba(34,197,94,.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.table-phase-icon { font-size: 2rem; }
+.table-day        { font-size: .8rem; color: rgba(255,255,255,.4); font-weight: 600; }
+
+/* Місце гравця */
+.player-seat {
+  position: absolute;
+  width: 84px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 6px 8px;
+  text-align: center;
+  cursor: default;
+  transition: border-color .2s, transform .15s, box-shadow .2s, background .2s;
+  user-select: none;
+}
+
+.seat-selectable  { cursor: pointer; }
+.seat-selectable:hover {
+  border-color: rgba(168,85,247,.6);
+  transform: translate(-50%, -50%) scale(1.08) !important;
+  box-shadow: 0 0 16px rgba(168,85,247,.3);
+}
+.seat-selected {
+  border-color: var(--accent2) !important;
+  background: rgba(168,85,247,.15) !important;
+  box-shadow: 0 0 0 3px rgba(168,85,247,.3), 0 0 20px rgba(168,85,247,.2) !important;
+}
+.seat-self   { border-color: rgba(59,130,246,.5); background: rgba(59,130,246,.07); }
+.seat-dead   { opacity: .4; filter: grayscale(.7); }
+
+.seat-slot {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--text2);
+}
+
+.seat-crown {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: .75rem;
+}
+
+.seat-votes {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: .7rem;
+  font-weight: 700;
+  background: rgba(245,158,11,.2);
+  border: 1px solid rgba(245,158,11,.4);
+  border-radius: 99px;
+  padding: 1px 7px;
+  white-space: nowrap;
+  color: #f59e0b;
+}
+
+.seat-avatar { font-size: 1.6rem; margin-bottom: 3px; }
+.seat-name   { font-size: .72rem; font-weight: 600; word-break: break-word; line-height: 1.2; }
+.seat-role   { font-size: .62rem; margin-top: 3px; font-weight: 500; }
+
+/* Responsive — менший стіл на мобільних */
+@media (max-width: 600px) {
+  .circular-arena { transform: scale(.7); transform-origin: top center; margin-bottom: -120px; }
+}
+
+/* ===================== PLAYER CARD (legacy, unused) ===================== */
 .players-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
+.player-card  { display: none; }
+.pc-slot      { display: none; }
 
-.player-card {
+
   background: var(--bg2);
   border: 1.5px solid var(--border);
   border-radius: 14px;

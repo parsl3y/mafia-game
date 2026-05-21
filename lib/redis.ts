@@ -21,7 +21,7 @@ export interface GameSettings {
 
 export const DEFAULT_SETTINGS: GameSettings = {
   mafiaCount: 1,
-  hasDoctor: true,
+  hasDoctor: false,
   hasProstitute: false,
 }
 
