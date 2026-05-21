@@ -37,6 +37,7 @@ export interface Player {
 }
 
 export interface GameState {
+  id?: string
   phase: GamePhase
   day: number
   players: Player[]

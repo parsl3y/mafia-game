@@ -79,6 +79,7 @@ export async function POST(req: Request) {
       .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
 
     const state: GameState = {
+      id:                `game-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       phase:             'day',
       day:               1,
       players,

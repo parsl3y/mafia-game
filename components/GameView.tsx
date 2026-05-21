@@ -23,6 +23,7 @@ interface NightActionsStatus {
 }
 
 interface GameState {
+  id?: string
   phase: Phase
   day: number
   players: Player[]
@@ -43,6 +44,51 @@ const ROLE_META: Record<Role, { icon: string; label: string; color: string; nigh
   doctor:     { icon: '💉', label: 'Лікар',      color: '#22c55e', nightAction: 'heal' },
   prostitute: { icon: '💋', label: 'Повія',      color: '#ec4899', nightAction: 'block' },
   civilian:   { icon: '👤', label: 'Громадянин', color: '#94a3b8', nightAction: null },
+}
+
+// Web Audio API аналізатор гучності
+function startVolumeAnalyser(stream: MediaStream, onVolume: (v: number) => void) {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioCtx) return null
+    const ctx = new AudioCtx()
+    const source = ctx.createMediaStreamSource(stream)
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 64
+    source.connect(analyser)
+
+    const bufferLength = analyser.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+    let active = true
+
+    const check = () => {
+      if (!active) return
+      analyser.getByteFrequencyData(dataArray)
+      let sum = 0
+      for (let i = 0; i < bufferLength; i++) {
+        sum += dataArray[i]
+      }
+      const avg = sum / bufferLength
+      // Нормалізуємо гучність від 0 до 100
+      const vol = Math.min(100, Math.max(0, avg * 1.6))
+      onVolume(vol)
+      requestAnimationFrame(check)
+    }
+    
+    check()
+
+    return () => {
+      active = false
+      try {
+        source.disconnect()
+        analyser.disconnect()
+        ctx.close()
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('Не вдалося запустити AudioContext:', err)
+    return null
+  }
 }
 
 interface Props {
@@ -79,9 +125,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   // WebRTC / PeerJS Голосовий чат
   const [micStatus, setMicStatus] = useState<'muted' | 'speaking' | 'connecting'>('muted')
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
+  const [speakerVolume, setSpeakerVolume] = useState<number>(0)
   const peerRef = useRef<any>(null)
   const callsRef = useRef<any[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const volumeAnalyserRef = useRef<any>(null)
 
   const showNotif = (msg: string) => {
     setNotification(msg)
@@ -204,12 +252,21 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
           audio.muted = false
           audio.volume = 1.0
           audio.play().catch(err => console.warn('Помилка відтворення аудіо стріму:', err))
+
+          // Запускаємо аналізатор гучності для вхідного стріму
+          if (volumeAnalyserRef.current) volumeAnalyserRef.current()
+          volumeAnalyserRef.current = startVolumeAnalyser(remoteStream, setSpeakerVolume)
         })
 
         incomingCall.on('close', () => {
           if (audioRef.current) {
             audioRef.current.srcObject = null
           }
+          if (volumeAnalyserRef.current) {
+            volumeAnalyserRef.current()
+            volumeAnalyserRef.current = null
+          }
+          setSpeakerVolume(0)
         })
       })
     }
@@ -226,6 +283,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         script.remove()
         if (peerRef.current) {
           peerRef.current.destroy()
+        }
+        if (volumeAnalyserRef.current) {
+          volumeAnalyserRef.current()
+          volumeAnalyserRef.current = null
         }
       }
     }
@@ -244,6 +305,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         console.log('🎙️ Ви говорите! Увімкнення трансляції мікрофона для інших.')
         setMicStatus('speaking')
         localStream.getAudioTracks().forEach(t => t.enabled = true)
+
+        // Запускаємо аналізатор гучності для власного мікрофона
+        if (volumeAnalyserRef.current) volumeAnalyserRef.current()
+        volumeAnalyserRef.current = startVolumeAnalyser(localStream, setSpeakerVolume)
 
         const gameId = game.id || 'mafiagame'
 
@@ -269,13 +334,26 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         // Повторюємо спроби дзвінків кожні 4 секунди промови на випадок, якщо хтось 
         // завантажився із запізненням чи обірвався інтернет!
         const intervalId = setInterval(makeCalls, 4000)
-        return () => clearInterval(intervalId)
+        return () => {
+          clearInterval(intervalId)
+          if (volumeAnalyserRef.current) {
+            volumeAnalyserRef.current()
+            volumeAnalyserRef.current = null
+          }
+          setSpeakerVolume(0)
+        }
       }
     } else {
       if (localStream) {
         localStream.getAudioTracks().forEach(t => t.enabled = false)
       }
       setMicStatus('muted')
+
+      if (volumeAnalyserRef.current) {
+        volumeAnalyserRef.current()
+        volumeAnalyserRef.current = null
+      }
+      setSpeakerVolume(0)
 
       if (callsRef.current.length > 0) {
         console.log('🔇 Промова закінчилась. Мутимо мікрофон та закриваємо з’єднання.')
@@ -600,12 +678,15 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     ${isSelected   ? 'seat-selected' : ''}
                     ${canSelect    ? 'seat-selectable' : ''}
                     ${showTimer    ? 'seat-leaving'  : ''}
-                    ${p.id === game.activeSpeakerId ? 'seat-speaking' : ''}
+                    ${(p.id === game.activeSpeakerId && game.speakerTimerStartedAt) ? 'seat-speaking' : ''}
                   `}
                   style={{
                     left:      x,
                     top:       y,
                     transform: 'translate(-50%, -50%)',
+                    ...(p.id === game.activeSpeakerId ? {
+                      '--volume-scale': `${1.05 + (speakerVolume / 100) * 0.45}`
+                    } as React.CSSProperties : {})
                   }}
                   onClick={() => canSelect && setSelectedTarget(p.id === selectedTarget ? null : p.id)}
                 >
