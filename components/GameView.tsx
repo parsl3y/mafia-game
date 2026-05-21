@@ -31,8 +31,8 @@ function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, i
     }
   } else {
     canSee = true
-    // Вдень чуємо лише ведучого або того, хто зараз виступає на таймері
-    if (isHost || isSpeakingNow) {
+    // Вдень чуємо лише того, хто зараз виступає на таймері
+    if (isSpeakingNow) {
       canHear = true
     }
   }
