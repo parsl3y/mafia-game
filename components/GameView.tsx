@@ -12,6 +12,7 @@ interface Player {
   isAlive: boolean
   isHost: boolean
   slotNumber?: number
+  lastSeen?: number
 }
 
 interface GameState {
@@ -62,6 +63,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const [phaseAdvanced, setPhaseAdvanced]   = useState(false)
   const [notification, setNotification]     = useState<string | null>(null)
   const [investigateResult, setInvestigateResult] = useState<string | null>(null)
+  const [now, setNow]                       = useState(Date.now())
 
   const showNotif = (msg: string) => {
     setNotification(msg)
@@ -90,6 +92,29 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const interval = setInterval(fetchState, 2000)
     return () => clearInterval(interval)
   }, [fetchState])
+
+  // Тікаємо щосекунди для оновлення таймеру
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Heartbeat кожні 20 сек — повідомляє сервер що гравець онлайн
+  useEffect(() => {
+    const beat = async () => {
+      try {
+        const res = await fetch('/api/game/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ playerId }),
+        })
+        if (res.status === 404) onGameEnd() // гру завершено або нас викинули
+      } catch { /* ignore */ }
+    }
+    beat()
+    const id = setInterval(beat, 20_000)
+    return () => clearInterval(id)
+  }, [playerId, onGameEnd])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
@@ -207,6 +232,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               const isMine     = p.id === playerId
               const isSelected = selectedTarget === p.id
               const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
+              // Таймаут гравця у грі — 5 хв, іконка після 2.5 хв
+              const silentMs   = now - (p.lastSeen ?? now)
+              const showTimer  = silentMs > 150_000 && !isMine && p.isAlive
 
               return (
                 <div
@@ -216,6 +244,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     ${isMine       ? 'seat-self'     : ''}
                     ${isSelected   ? 'seat-selected' : ''}
                     ${canSelect    ? 'seat-selectable' : ''}
+                    ${showTimer    ? 'seat-leaving'  : ''}
                   `}
                   style={{
                     left:      x,
@@ -226,6 +255,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 >
                   {/* Слот-номер */}
                   <div className="seat-slot">#{p.slotNumber ?? i + 1}</div>
+
+                  {/* Іконка таймауту */}
+                  {showTimer && (
+                    <div className="seat-timer" title="Гравець неактивний майже 5 хв">⏳</div>
+                  )}
 
                   {/* Аватар */}
                   <div className="seat-avatar">

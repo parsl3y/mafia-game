@@ -526,6 +526,28 @@ html, body {
 .seat-self   { border-color: rgba(59,130,246,.5); background: rgba(59,130,246,.07); }
 .seat-dead   { opacity: .4; filter: grayscale(.7); }
 
+.seat-leaving {
+  border-color: rgba(245,158,11,.5) !important;
+  background: rgba(245,158,11,.07) !important;
+  animation: seat-pulse 1.2s ease-in-out infinite;
+}
+@keyframes seat-pulse {
+  0%,100% { border-color: rgba(245,158,11,.3); }
+  50%      { border-color: rgba(245,158,11,.9); box-shadow: 0 0 12px rgba(245,158,11,.3); }
+}
+
+.seat-timer {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: .7rem;
+  animation: hourglass-blink .8s ease-in-out infinite;
+}
+@keyframes hourglass-blink {
+  0%,100% { opacity: 1; }
+  50%      { opacity: .25; }
+}
+
 .seat-slot {
   position: absolute;
   top: 4px;
