@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getLobbyPlayers, addPlayerToLobby, setLobbyPlayers, getGameState, Player } from '@/lib/redis'
+import { getLobbyPlayers, addPlayerToLobby, setLobbyPlayers, getGameState, setGameState, Player } from '@/lib/redis'
 import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
@@ -25,7 +25,7 @@ async function evictStalePlayers(players: Player[]): Promise<Player[]> {
 // GET /api/lobby — список гравців (автоматично очищає тих хто пропав)
 export async function GET() {
   try {
-    const raw     = await getLobbyPlayers()
+    const raw = await getLobbyPlayers()
     const players = await evictStalePlayers(raw)
     return NextResponse.json({ players })
   } catch (err) {
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     const trimmedName = name.trim().slice(0, 20)
     const rawExisting = await getLobbyPlayers()
-    const existing    = await evictStalePlayers(rawExisting)
+    const existing = await evictStalePlayers(rawExisting)
 
     if (existing.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
       return NextResponse.json({ error: "Гравець з таким іменем вже є в лобі" }, { status: 409 })
@@ -71,18 +71,18 @@ export async function POST(req: Request) {
 
     // Найменший вільний слот
     const usedSlots = new Set(existing.map(p => p.slotNumber ?? 0))
-    let slotNumber  = 1
+    let slotNumber = 1
     while (usedSlots.has(slotNumber)) slotNumber++
 
     const player: Player = {
-      id:          uuidv4(),
-      name:        trimmedName,
-      role:        null,
-      isAlive:     true,
-      isHost:      existing.length === 0,
+      id: uuidv4(),
+      name: trimmedName,
+      role: null,
+      isAlive: true,
+      isHost: existing.length === 0,
       slotNumber,
-      joinedAt:    Date.now(),
-      lastSeen:    Date.now(),
+      joinedAt: Date.now(),
+      lastSeen: Date.now(),
     }
 
     const players = await addPlayerToLobby(player)
