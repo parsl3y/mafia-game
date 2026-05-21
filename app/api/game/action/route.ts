@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { playerId, action, targetId } = body
     // action: 'kill' | 'heal' | 'investigate' | 'block' | 'vote' | 'next_phase'
+    //         | 'nominate' | 'skip_nomination' | 'nomination_vote' | 'start_defense' | 'end_defense'
 
     const state = await getGameState()
     if (!state) {
@@ -148,22 +149,141 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
       }
     } else if (state.phase === 'day') {
+      // ─── Speech phase actions ───
       if (action === 'start_speech') {
         if (playerId !== state.activeSpeakerId) {
           return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
         }
         state.speakerTimerStartedAt = Date.now()
+
       } else if (action === 'end_speech') {
         if (playerId !== state.activeSpeakerId) {
           return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
         }
+        // Після виступу → переходимо в фазу номінації для цього спікера
+        state.votingPhase = 'nominating'
+        state.speakerTimerStartedAt = null
+
+      // ─── Nomination actions ───
+      } else if (action === 'nominate') {
+        // Гравець номінує когось після свого виступу
+        if (state.votingPhase !== 'nominating') {
+          return NextResponse.json({ error: 'Зараз не фаза номінації' }, { status: 400 })
+        }
+        if (playerId !== state.activeSpeakerId) {
+          return NextResponse.json({ error: 'Тільки поточний спікер може номінувати' }, { status: 400 })
+        }
+        if (!targetId) {
+          return NextResponse.json({ error: 'Не вказано гравця для номінації' }, { status: 400 })
+        }
+        // Не можна номінувати себе
+        if (targetId === playerId) {
+          return NextResponse.json({ error: 'Не можна номінувати себе' }, { status: 400 })
+        }
+        // Перевіряємо чи цільовий гравець живий
+        const target = state.players.find(p => p.id === targetId)
+        if (!target || !target.isAlive) {
+          return NextResponse.json({ error: 'Не можна номінувати мертвого гравця' }, { status: 400 })
+        }
+
+        if (!state.nominations) state.nominations = {}
+        if (!state.nominatedPlayers) state.nominatedPlayers = []
+
+        state.nominations[playerId] = targetId
+        if (!state.nominatedPlayers.includes(targetId)) {
+          state.nominatedPlayers.push(targetId)
+        }
+
+        // Переходимо до наступного спікера
         advanceSpeaker(state)
+        // Якщо ще є спікери — повертаємось до speeches
+        if (state.activeSpeakerId) {
+          state.votingPhase = 'speeches'
+        }
+        // Якщо виступи закінчились — перевіряємо чи є номінанти
+        if (!state.activeSpeakerId) {
+          if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
+            state.votingPhase = 'voting'
+            state.nominationVotes = {}
+          } else {
+            // Ніхто не номінований → переходимо до ночі без голосування
+            state.votingPhase = null
+          }
+        }
+
+      } else if (action === 'skip_nomination') {
+        // Гравець відмовляється від номінації
+        if (state.votingPhase !== 'nominating') {
+          return NextResponse.json({ error: 'Зараз не фаза номінації' }, { status: 400 })
+        }
+        if (playerId !== state.activeSpeakerId) {
+          return NextResponse.json({ error: 'Тільки поточний спікер може пропустити номінацію' }, { status: 400 })
+        }
+
+        // Переходимо до наступного спікера
+        advanceSpeaker(state)
+        if (state.activeSpeakerId) {
+          state.votingPhase = 'speeches'
+        }
+        // Якщо виступи закінчились — перевіряємо чи є номінанти
+        if (!state.activeSpeakerId) {
+          if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
+            state.votingPhase = 'voting'
+            state.nominationVotes = {}
+          } else {
+            state.votingPhase = null
+          }
+        }
+
+      // ─── Voting on nominated players ───
+      } else if (action === 'nomination_vote') {
+        if (state.votingPhase !== 'voting' && state.votingPhase !== 'revote') {
+          return NextResponse.json({ error: 'Зараз не фаза голосування' }, { status: 400 })
+        }
+        if (!targetId) {
+          return NextResponse.json({ error: 'Не вказано за кого голосувати' }, { status: 400 })
+        }
+        // Перевіряємо що targetId є в списку номінованих
+        if (!state.nominatedPlayers?.includes(targetId)) {
+          return NextResponse.json({ error: 'Цей гравець не номінований' }, { status: 400 })
+        }
+
+        if (!state.nominationVotes) state.nominationVotes = {}
+        state.nominationVotes[playerId] = targetId
+
+      // ─── Defense speech actions ───
+      } else if (action === 'start_defense') {
+        if (state.votingPhase !== 'defense') {
+          return NextResponse.json({ error: 'Зараз не фаза захисту' }, { status: 400 })
+        }
+        if (playerId !== state.defensePlayerId) {
+          return NextResponse.json({ error: 'Зараз не ваша черга захищатись' }, { status: 400 })
+        }
+        state.defenseTimerStartedAt = Date.now()
+
+      } else if (action === 'end_defense') {
+        if (state.votingPhase !== 'defense') {
+          return NextResponse.json({ error: 'Зараз не фаза захисту' }, { status: 400 })
+        }
+        if (playerId !== state.defensePlayerId) {
+          return NextResponse.json({ error: 'Зараз не ваша черга захищатись' }, { status: 400 })
+        }
+        advanceDefense(state)
+
+      // ─── Host resolves voting ───
       } else if (action === 'vote') {
+        // Legacy vote — пряме голосування (використовується як fallback)
         if (state.activeSpeakerId !== null) {
           return NextResponse.json({ error: 'Голосування не розпочато, триває круг виступів' }, { status: 400 })
         }
         state.votes[playerId] = targetId
+
       } else if (action === 'next_phase') {
+        // Хост завершує день
+        if (state.votingPhase === 'voting' || state.votingPhase === 'revote') {
+          // Підраховуємо голоси за номінованих та вирішуємо результат
+          return resolveNominationVoting(state)
+        }
         if (state.activeSpeakerId !== null) {
           return NextResponse.json({ error: 'Не можна завершити день поки триває круг виступів' }, { status: 400 })
         }
@@ -235,6 +355,112 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
   state.speakerTimerStartedAt = null
 
+  // Ініціалізація системи номінацій
+  state.votingPhase = 'speeches'
+  state.nominations = {}
+  state.nominatedPlayers = []
+  state.nominationVotes = {}
+  state.defensePlayerId = null
+  state.defenseTimerStartedAt = null
+  state.defenseOrder = []
+  state.defensesDone = []
+
+  const winner = checkWinner(state)
+  if (winner) {
+    state.winner = winner
+    state.phase = 'ended'
+  }
+
+  await setGameState(state)
+  return NextResponse.json({ success: true, state, event })
+}
+
+// Підрахунок голосів за номінованих гравців та вирішення результату
+async function resolveNominationVoting(state: GameState): Promise<NextResponse> {
+  const votes = state.nominationVotes ?? {}
+  const tally: Record<string, number> = {}
+
+  // Рахуємо голоси
+  for (const nomineeId of Object.values(votes)) {
+    tally[nomineeId] = (tally[nomineeId] || 0) + 1
+  }
+
+  // Знаходимо максимум голосів
+  let maxVotes = 0
+  for (const count of Object.values(tally)) {
+    if (count > maxVotes) maxVotes = count
+  }
+
+  if (maxVotes === 0) {
+    // Ніхто не голосував → нічию не вирішуємо, переходимо до ночі
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.')
+  }
+
+  // Знаходимо всіх з максимальною кількістю голосів
+  const topPlayers = Object.entries(tally)
+    .filter(([, count]) => count === maxVotes)
+    .map(([pid]) => pid)
+
+  if (topPlayers.length === 1) {
+    // Один лідер → вибуває
+    const victim = state.players.find(p => p.id === topPlayers[0])
+    if (victim) {
+      victim.isAlive = false
+      return transitionToNight(state, `Місто виключило ${victim.name}!`)
+    }
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.')
+  }
+
+  // Нічия! Перевіряємо чи це вже ревот
+  if (state.votingPhase === 'revote') {
+    // Після ревота — нікого не виключають
+    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.')
+  }
+
+  // Перша нічия → захисні промови
+  state.defenseOrder = topPlayers
+  state.defensesDone = []
+  state.defensePlayerId = topPlayers[0]
+  state.defenseTimerStartedAt = null
+  state.votingPhase = 'defense'
+  state.nominatedPlayers = topPlayers // звужуємо до тих хто в нічиї
+  state.nominationVotes = {}
+
+  const tiedNames = topPlayers
+    .map(id => state.players.find(p => p.id === id)?.name ?? '???')
+    .join(', ')
+  state.lastEvent = `Нічия між ${tiedNames}! Захисні промови.`
+
+  await setGameState(state)
+  return NextResponse.json({ success: true, state })
+}
+
+// Перехід до нічної фази
+async function transitionToNight(state: GameState, event: string): Promise<NextResponse> {
+  state.lastEvent = event
+  state.votes = {}
+  state.phase = 'night'
+  state.day += 1
+  state.nightStartedAt = Date.now()
+  state.fakeDelays = {
+    mafia: Math.floor(Math.random() * 4000) + 1000,
+    sheriff: Math.floor(Math.random() * 4000) + 1000,
+    doctor: Math.floor(Math.random() * 4000) + 1000,
+    prostitute: Math.floor(Math.random() * 4000) + 1000,
+  }
+
+  // Очищаємо номінаційні поля
+  state.votingPhase = null
+  state.nominations = {}
+  state.nominatedPlayers = []
+  state.nominationVotes = {}
+  state.defensePlayerId = null
+  state.defenseTimerStartedAt = null
+  state.defenseOrder = []
+  state.defensesDone = []
+  state.activeSpeakerId = null
+  state.speakerTimerStartedAt = null
+
   const winner = checkWinner(state)
   if (winner) {
     state.winner = winner
@@ -274,26 +500,7 @@ async function resolveDay(state: GameState): Promise<NextResponse> {
     event = 'Місто не дійшло згоди — нікого не виключено.'
   }
 
-  state.lastEvent = event
-  state.votes = {}
-  state.phase = 'night'
-  state.day += 1
-  state.nightStartedAt = Date.now()
-  state.fakeDelays = {
-    mafia: Math.floor(Math.random() * 4000) + 1000,
-    sheriff: Math.floor(Math.random() * 4000) + 1000,
-    doctor: Math.floor(Math.random() * 4000) + 1000,
-    prostitute: Math.floor(Math.random() * 4000) + 1000,
-  }
-
-  const winner = checkWinner(state)
-  if (winner) {
-    state.winner = winner
-    state.phase = 'ended'
-  }
-
-  await setGameState(state)
-  return NextResponse.json({ success: true, state, event })
+  return transitionToNight(state, event)
 }
 
 export function advanceSpeaker(state: GameState) {
@@ -315,5 +522,29 @@ export function advanceSpeaker(state: GameState) {
   } else {
     state.activeSpeakerId = null
     state.speakerTimerStartedAt = null
+  }
+}
+
+// Просування захисних промов
+export function advanceDefense(state: GameState) {
+  if (!state.defensePlayerId) return
+
+  if (!state.defensesDone) state.defensesDone = []
+  if (!state.defensesDone.includes(state.defensePlayerId)) {
+    state.defensesDone.push(state.defensePlayerId)
+  }
+
+  const defenseOrder = state.defenseOrder ?? []
+  const nextDefender = defenseOrder.find(id => !state.defensesDone?.includes(id))
+  
+  if (nextDefender) {
+    state.defensePlayerId = nextDefender
+    state.defenseTimerStartedAt = null
+  } else {
+    // Всі захистились → ревот
+    state.defensePlayerId = null
+    state.defenseTimerStartedAt = null
+    state.votingPhase = 'revote'
+    state.nominationVotes = {}
   }
 }

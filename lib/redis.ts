@@ -36,6 +36,8 @@ export interface Player {
   lastSeen: number  // timestamp останнього heartbeat
 }
 
+export type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | null
+
 export interface GameState {
   id?: string
   phase: GamePhase
@@ -59,6 +61,15 @@ export interface GameState {
   speakersDone?: string[]
   forceEndRequested?: boolean
   forceEndRequestedBy?: string | null
+  // Nomination & voting system
+  nominations?: Record<string, string>       // nominatorId → nomineeId
+  nominatedPlayers?: string[]                  // unique nominated player IDs
+  votingPhase?: VotingPhase                    // current voting sub-phase
+  defensePlayerId?: string | null              // who's currently defending
+  defenseTimerStartedAt?: number | null        // defense speech timer
+  defenseOrder?: string[]                      // order of defense speeches (tied players)
+  defensesDone?: string[]                      // finished defense speeches
+  nominationVotes?: Record<string, string>     // voterId → nomineeId (vote target)
 }
 
 

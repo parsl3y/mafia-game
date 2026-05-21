@@ -22,6 +22,8 @@ interface NightActionsStatus {
   prostitute: { required: boolean; done: boolean }
 }
 
+type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | null
+
 interface GameState {
   id?: string
   phase: Phase
@@ -41,6 +43,15 @@ interface GameState {
   speakersDone?: string[]
   forceEndRequested?: boolean
   forceEndRequestedBy?: string | null
+  // Nomination & voting system
+  nominations?: Record<string, string>
+  nominatedPlayers?: string[]
+  votingPhase?: VotingPhase
+  defensePlayerId?: string | null
+  defenseTimerStartedAt?: number | null
+  defenseOrder?: string[]
+  defensesDone?: string[]
+  nominationVotes?: Record<string, string>
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -438,6 +449,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setActionDone(true)
   }
 
+  const handleNominationVote = async () => {
+    if (!selectedTarget) return
+    await sendAction('nomination_vote', selectedTarget)
+    setActionDone(true)
+  }
+
   const handleNextPhase = async () => {
     await sendAction('next_phase')
     setPhaseAdvanced(true)
@@ -634,27 +651,32 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
             {/* Круглий стіл по центру */}
             <div className="round-table" style={{ width: TABLE_RADIUS * 2, height: TABLE_RADIUS * 2, borderRadius: '50%' }}>
-              {game.phase === 'day' && game.activeSpeakerId ? (() => {
-                const activeSpeaker = game.players.find((p: any) => p.id === game.activeSpeakerId)
-                const remaining = game.speakerTimerStartedAt
-                  ? Math.max(0, Math.ceil((60_000 - (now - game.speakerTimerStartedAt)) / 1000))
-                  : 60
+              {game.phase === 'day' && (game.activeSpeakerId || game.defensePlayerId) ? (() => {
+                const activeId = game.votingPhase === 'defense' ? game.defensePlayerId : game.activeSpeakerId
+                const activeSpeaker = game.players.find((p: any) => p.id === activeId)
+                const startTime = game.votingPhase === 'defense' ? game.defenseTimerStartedAt : game.speakerTimerStartedAt
+                const totalTime = game.votingPhase === 'defense' ? 30_000 : 60_000
+                const remaining = startTime
+                  ? Math.max(0, Math.ceil((totalTime - (now - startTime)) / 1000))
+                  : (totalTime / 1000)
+                
+                const title = game.votingPhase === 'defense' ? '🛡️ Захист' : '🗣️ Виступає'
 
                 return (
                   <div className="table-speaker-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', opacity: 0.6, letterSpacing: '0.5px' }}>🗣️ Виступає</div>
+                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', opacity: 0.6, letterSpacing: '0.5px' }}>{title}</div>
                     <div style={{ fontSize: '0.88rem', fontWeight: 'bold', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: '2px 0 6px 0', color: '#60a5fa' }}>
                       {activeSpeaker ? activeSpeaker.name : 'Голос...'}
                     </div>
 
-                    {game.speakerTimerStartedAt ? (
+                    {startTime ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         <div style={{ fontSize: '1.8rem', fontWeight: 800, fontFamily: 'monospace', color: remaining <= 10 ? '#ef4444' : '#22c55e', textShadow: remaining <= 10 ? '0 0 10px rgba(239, 68, 68, 0.5)' : 'none', lineHeight: 1 }}>
                           {remaining}с
                         </div>
-                        {game.activeSpeakerId === playerId && (
+                        {activeId === playerId && (
                           <button
-                            onClick={() => sendAction('end_speech')}
+                            onClick={() => sendAction(game.votingPhase === 'defense' ? 'end_defense' : 'end_speech')}
                             style={{
                               marginTop: '8px',
                               padding: '4px 10px',
@@ -677,9 +699,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                         <div style={{ fontSize: '0.75rem', opacity: 0.8, color: '#f59e0b', fontStyle: 'italic', marginBottom: '6px' }}>
                           Очікує виступу
                         </div>
-                        {game.activeSpeakerId === playerId ? (
+                        {activeId === playerId ? (
                           <button
-                            onClick={() => sendAction('start_speech')}
+                            onClick={() => sendAction(game.votingPhase === 'defense' ? 'start_defense' : 'start_speech')}
                             style={{
                               padding: '5px 10px',
                               fontSize: '0.75rem',
@@ -695,7 +717,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                             🎙️ Розпочати
                           </button>
                         ) : (
-                          <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>Коло виступів</span>
+                          <span style={{ fontSize: '0.7rem', opacity: 0.5 }}>{game.votingPhase === 'defense' ? 'Захисна промова' : 'Коло виступів'}</span>
                         )}
                       </div>
                     )}
@@ -716,12 +738,26 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               const { x, y } = getSeatPos(i, sortedPlayers.length)
               const isMine = p.id === playerId
               const isSelected = selectedTarget === p.id
-              const canSelect = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone && !game.activeSpeakerId
+              
+              // Логіка можливості вибору цілі
+              let canSelect = false
+              if (!isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone) {
+                if (game.phase === 'night' && game.myRole !== 'civilian') canSelect = true
+                if (game.phase === 'day') {
+                  if (game.votingPhase === 'nominating' && game.activeSpeakerId === playerId) canSelect = true
+                  if ((game.votingPhase === 'voting' || game.votingPhase === 'revote') && game.nominatedPlayers?.includes(p.id)) canSelect = true
+                  // Fallback для legacy vote (якщо фаза дня без спеціальних фаз голосування)
+                  if (!game.votingPhase && !game.activeSpeakerId) canSelect = true
+                }
+              }
+
               // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat (заморожено на паузі)
               const silentMs = now - (p.lastSeen ?? now)
               const showTimer = silentMs > 30_000 && p.isAlive && !game.isPaused
               const secsLeft = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
 
+              const isSpeakingNow = (p.id === game.activeSpeakerId && game.speakerTimerStartedAt) || 
+                                    (p.id === game.defensePlayerId && game.defenseTimerStartedAt)
 
               return (
                 <div
@@ -732,13 +768,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     ${isSelected ? 'seat-selected' : ''}
                     ${canSelect ? 'seat-selectable' : ''}
                     ${showTimer ? 'seat-leaving' : ''}
-                    ${(p.id === game.activeSpeakerId && game.speakerTimerStartedAt) ? 'seat-speaking' : ''}
+                    ${isSpeakingNow ? 'seat-speaking' : ''}
                   `}
                   style={{
                     left: x,
                     top: y,
                     transform: 'translate(-50%, -50%)',
-                    ...(p.id === game.activeSpeakerId ? {
+                    ...(isSpeakingNow ? {
                       '--volume-scale': `${1.05 + (speakerVolume / 100) * 0.45}`
                     } as React.CSSProperties : {})
                   }}
@@ -746,6 +782,23 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 >
                   {/* Слот-номер */}
                   <div className="seat-slot">#{p.slotNumber ?? i + 1}</div>
+
+                  {/* Скільки голосів за цього гравця */}
+                  {game.phase === 'day' && (() => {
+                    // Показуємо legacy votes, або nominationVotes, або скільки разів номінували
+                    let voteCount = 0
+                    if (game.votingPhase === 'voting' || game.votingPhase === 'revote') {
+                      voteCount = Object.values(game.nominationVotes || {}).filter(v => v === p.id).length
+                    } else if (game.votingPhase === 'nominating' || game.votingPhase === 'speeches') {
+                      voteCount = Object.values(game.nominations || {}).filter(v => v === p.id).length
+                    } else {
+                      voteCount = Object.values(game.votes || {}).filter(v => v === p.id).length
+                    }
+                    
+                    return voteCount > 0
+                      ? <div className="seat-votes">🗳️ {voteCount}</div>
+                      : null
+                  })()}
 
                   {/* Sheriff check result circle */}
                   {game.sheriffChecks?.[p.id] && (
@@ -768,7 +821,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                   {/* Ім'я */}
                   <div className="seat-name">
-                    {p.name} {p.id === game.activeSpeakerId && '🎙️'}
+                    {p.name} {isSpeakingNow && '🎙️'}
                   </div>
 
                   {/* Роль (своя або відкрита після смерті / мафія бачить мафію) */}
@@ -877,13 +930,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
             {game.phase === 'day' && (
               <>
-                {game.activeSpeakerId ? (
+                {game.votingPhase === 'speeches' && game.activeSpeakerId && (
                   <>
                     <h2 className="action-title">🎙️ Коло виступів</h2>
                     <p className="action-hint">
                       {game.activeSpeakerId === playerId
                         ? '🔥 Зараз ваша черга виступати! Розкажіть про себе за 1 хвилину.'
-                        : 'Вислухайте промову іншого гравця. Голосування розпочнеться після виступів.'
+                        : 'Вислухайте промову іншого гравця.'
                       }
                     </p>
                     {game.activeSpeakerId === playerId && (
@@ -900,19 +953,72 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       </div>
                     )}
                   </>
-                ) : (
+                )}
+
+                {game.votingPhase === 'nominating' && game.activeSpeakerId && (
                   <>
-                    <h2 className="action-title">☀️ Денна фаза — Голосування</h2>
+                    <h2 className="action-title">👉 Фаза номінації</h2>
+                    {game.activeSpeakerId === playerId ? (
+                      <>
+                        <p className="action-hint">Ваш виступ завершено. Бажаєте виставити когось на голосування?</p>
+                        {!actionDone && (
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button 
+                              className="action-btn vote-btn" 
+                              disabled={!selectedTarget || selectedTarget === playerId} 
+                              onClick={() => {
+                                sendAction('nominate', selectedTarget)
+                                setActionDone(true)
+                              }}
+                            >
+                              🙋‍♂️ Виставити
+                            </button>
+                            <button 
+                              className="action-btn" 
+                              style={{ backgroundColor: '#64748b' }} 
+                              onClick={() => {
+                                sendAction('skip_nomination')
+                                setActionDone(true)
+                              }}
+                            >
+                              ⏩ Пропустити
+                            </button>
+                          </div>
+                        )}
+                        {actionDone && <p className="action-done">✅ Рішення прийнято</p>}
+                      </>
+                    ) : (
+                      <p className="action-hint">Очікуємо рішення гравця щодо номінації...</p>
+                    )}
+                  </>
+                )}
+
+                {(game.votingPhase === 'voting' || game.votingPhase === 'revote') && (
+                  <>
+                    <h2 className="action-title">
+                      {game.votingPhase === 'revote' ? '⚠️ Повторне голосування' : '☀️ Денна фаза — Голосування'}
+                    </h2>
                     {iAmAlive ? (
                       <>
-                        <p className="action-hint">Оберіть підозрюваного для виключення:</p>
+                        <p className="action-hint">
+                          Оберіть підозрюваного з числа номінованих:
+                          {game.nominatedPlayers && game.nominatedPlayers.length > 0 && (
+                            <span style={{ display: 'block', marginTop: '6px', color: '#f59e0b', fontWeight: 'bold' }}>
+                              {game.nominatedPlayers.map(id => game.players.find(p => p.id === id)?.name).join(', ')}
+                            </span>
+                          )}
+                        </p>
                         {!actionDone && (
-                          <button className="action-btn vote-btn" disabled={!selectedTarget} onClick={handleVote}>
+                          <button 
+                            className="action-btn vote-btn" 
+                            disabled={!selectedTarget || !game.nominatedPlayers?.includes(selectedTarget)} 
+                            onClick={handleNominationVote}
+                          >
                             🗳️ Проголосувати
                           </button>
                         )}
                         {actionDone && (
-                          <p className="action-done">✅ Голос прийнято ({Object.keys(game.votes).length} з {alivePlayers.length + 1})</p>
+                          <p className="action-done">✅ Голос прийнято ({Object.keys(game.nominationVotes || {}).length} з {alivePlayers.length + 1})</p>
                         )}
                       </>
                     ) : (
@@ -922,6 +1028,40 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       <button className="phase-btn" onClick={handleNextPhase}>🌙 Завершити голосування</button>
                     )}
                   </>
+                )}
+
+                {game.votingPhase === 'defense' && game.defensePlayerId && (
+                  <>
+                    <h2 className="action-title">🛡️ Захисна промова (30с)</h2>
+                    <p className="action-hint">
+                      {game.defensePlayerId === playerId
+                        ? '🔥 Нічия! У вас є 30 секунд, щоб виправдати себе.'
+                        : `Нічия! Очікуємо на виступ ${game.players.find(p => p.id === game.defensePlayerId)?.name}...`}
+                    </p>
+                    {game.defensePlayerId === playerId && (
+                      <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
+                        {game.defenseTimerStartedAt ? (
+                          <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => sendAction('end_defense')}>
+                            🛑 Завершити захист
+                          </button>
+                        ) : (
+                          <button className="action-btn" style={{ backgroundColor: '#22c55e' }} onClick={() => sendAction('start_defense')}>
+                            🎙️ Почати захист (30с)
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {!game.votingPhase && !game.activeSpeakerId && (
+                   <>
+                     <h2 className="action-title">☀️ Денна фаза</h2>
+                     <p className="action-hint">Очікування дії ведучого...</p>
+                     {isHost && !phaseAdvanced && (
+                       <button className="phase-btn" onClick={handleNextPhase}>🌙 Перейти до ночі</button>
+                     )}
+                   </>
                 )}
               </>
             )}

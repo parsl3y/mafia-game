@@ -30,10 +30,25 @@ export async function GET(req: Request) {
         state.speakerTimerStartedAt &&
         now - state.speakerTimerStartedAt >= 60_000
       ) {
-        const { advanceSpeaker } = require('../action/route')
-        advanceSpeaker(state)
+        // Після виступу → фаза номінації
+        state.votingPhase = 'nominating'
+        state.speakerTimerStartedAt = null
         stateChanged = true
       }
+
+      // Автоматичне просування захисної промови (30 секунд)
+      if (
+        state.phase === 'day' &&
+        state.votingPhase === 'defense' &&
+        state.defensePlayerId &&
+        state.defenseTimerStartedAt &&
+        now - state.defenseTimerStartedAt >= 30_000
+      ) {
+        const { advanceDefense } = require('../action/route')
+        advanceDefense(state)
+        stateChanged = true
+      }
+
 
       state.players = state.players.map(p => {
         // Якщо гравець живий, але не надсилав heartbeat більше 1.5 хвилин

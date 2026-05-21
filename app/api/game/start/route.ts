@@ -96,6 +96,15 @@ export async function POST(req: Request) {
       speakersDone:      [],
       activeSpeakerId:   aliveSorted.length > 0 ? aliveSorted[0].id : null,
       speakerTimerStartedAt: null,
+      // Nomination & voting system
+      votingPhase:       'speeches',
+      nominations:       {},
+      nominatedPlayers:  [],
+      nominationVotes:   {},
+      defensePlayerId:   null,
+      defenseTimerStartedAt: null,
+      defenseOrder:      [],
+      defensesDone:      [],
     }
 
 
