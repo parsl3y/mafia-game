@@ -404,9 +404,37 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               {game.phase === 'ended'  && '🏁 Гра завершена'}
             </div>
             {game.phase !== 'ended' && (
-              <button className="pause-trigger-btn" onClick={() => sendAction('request_pause')}>
-                ⏸️ Пауза
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="pause-trigger-btn" onClick={() => sendAction('request_pause')}>
+                  ⏸️ Пауза
+                </button>
+                {isHost && (
+                  <button 
+                    className="pause-trigger-btn" 
+                    style={{ 
+                      backgroundColor: 'rgba(239, 68, 68, 0.12)', 
+                      color: '#ef4444', 
+                      borderColor: 'rgba(239, 68, 68, 0.3)',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.22)'
+                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.12)'
+                      e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'
+                    }}
+                    onClick={() => {
+                      if (window.confirm('Ви впевнені, що хочете закінчити гру?')) {
+                        sendAction('confirm_force_end')
+                      }
+                    }}
+                  >
+                    🛑 Закінчити гру
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <div className="game-me-info">
