@@ -185,8 +185,8 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           <div className="players-list">
             {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => {
               const silentMs  = now - (p.lastSeen ?? now)
-              const isWarning = silentMs > 5000 && p.id !== playerId // > 5 сек мовчить
-              const secsLeft  = Math.max(0, Math.ceil((10000 - silentMs) / 1000))
+              const isWarning = silentMs > 15000 && p.id !== playerId // > 15 сек мовчить
+              const secsLeft  = Math.max(0, Math.ceil((30000 - silentMs) / 1000))
 
               return (
                 <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''} ${isWarning ? 'player-leaving' : ''}`}>

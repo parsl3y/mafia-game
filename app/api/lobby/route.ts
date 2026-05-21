@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getLobbyPlayers, addPlayerToLobby, setLobbyPlayers, Player } from '@/lib/redis'
 import { v4 as uuidv4 } from 'uuid'
 
-const TIMEOUT_MS = 10_000 // 10 секунд без heartbeat → виключення
+const TIMEOUT_MS = 30_000 // 30 секунд без heartbeat → виключення
 
 // Видаляємо гравців що зникли > 10 сек тому, перепризначаємо хоста
 async function evictStalePlayers(players: Player[]): Promise<Player[]> {
