@@ -8,37 +8,50 @@ import '@livekit/components-styles'
 type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 type Phase = 'night' | 'day' | 'ended'
 
-function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, isAlive }: any) {
+function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, isAlive, isHost, isSpeakingNow }: any) {
   const tracks = useTracks([Track.Source.Camera, Track.Source.Microphone])
   
   const pTracks = tracks.filter(t => t.participant.identity === targetPlayerId)
   const vTrack = pTracks.find(t => t.source === Track.Source.Camera)
   const aTrack = pTracks.find(t => t.source === Track.Source.Microphone)
 
-  let canSeeAndHear = true
+  let canSee = true
+  let canHear = false
   
   if (gamePhase === 'night') {
     if (isLocal) {
-      canSeeAndHear = true 
+      canSee = true 
+      canHear = false
     } else if (myRole === 'mafia' && targetRole === 'mafia') {
-      canSeeAndHear = true
+      canSee = true
+      canHear = true
     } else {
-      canSeeAndHear = false
+      canSee = false
+      canHear = false
+    }
+  } else {
+    canSee = true
+    // Вдень чуємо лише ведучого або того, хто зараз виступає на таймері
+    if (isHost || isSpeakingNow) {
+      canHear = true
     }
   }
 
-  if (!isAlive && !isLocal) canSeeAndHear = false
+  if (!isAlive && !isLocal) {
+    canSee = false
+    canHear = false
+  }
 
-  if (!canSeeAndHear) return null
+  if (!canSee && !canHear) return null
 
   return (
     <>
-      {vTrack && (
+      {vTrack && canSee && (
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', zIndex: 1 }}>
           <VideoTrack trackRef={vTrack} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
       )}
-      {aTrack && !isLocal && (
+      {aTrack && !isLocal && canHear && (
         <AudioTrack trackRef={aTrack} />
       )}
     </>
@@ -901,6 +914,8 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       myRole={myRole}
                       targetRole={p.role}
                       isAlive={p.isAlive}
+                      isHost={p.isHost}
+                      isSpeakingNow={isSpeakingNow}
                     />
                     {!p.isAlive ? '💀' : isMine ? (myMeta?.icon ?? '👤') : '👤'}
                   </div>
