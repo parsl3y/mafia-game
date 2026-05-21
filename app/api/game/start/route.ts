@@ -64,6 +64,7 @@ export async function POST(req: Request) {
       ...p,
       role: shuffledRoles[i],
       isAlive: true,
+      lastSeen: Date.now(),
     }))
 
     const parts = []

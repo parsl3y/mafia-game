@@ -15,6 +15,40 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
+    // Очищення офлайн гравців у грі (> 5 хв)
+    const now = Date.now()
+    const GAME_TIMEOUT_MS = 5 * 60 * 1000
+    let stateChanged = false
+
+    state.players = state.players.map(p => {
+      // Якщо гравець живий, але не надсилав heartbeat більше 5 хвилин
+      if (p.isAlive && (now - (p.lastSeen ?? now)) >= GAME_TIMEOUT_MS) {
+        p.isAlive = false
+        stateChanged = true
+      }
+      return p
+    })
+
+    if (stateChanged) {
+      const alive = state.players.filter(p => p.isAlive)
+      const mafiaAlive = alive.filter(p => p.role === 'mafia').length
+      const townAlive = alive.filter(p => p.role !== 'mafia').length
+
+      let winner: 'mafia' | 'town' | null = null
+      if (mafiaAlive === 0) winner = 'town'
+      else if (mafiaAlive >= townAlive) winner = 'mafia'
+
+      if (winner) {
+        state.winner = winner
+        state.phase = 'ended'
+        state.lastEvent = `Гравець(і) дискваліфіковані за неактивність! ${winner === 'mafia' ? 'Мафія' : 'Місто'} перемагає!`
+      } else {
+        state.lastEvent = `Гравець(і) дискваліфіковані за неактивність!`
+      }
+      await setGameState(state)
+    }
+
+
     // Знаходимо поточного гравця
     const me = state.players.find(p => p.id === playerId)
 
