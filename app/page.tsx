@@ -82,6 +82,33 @@ export default function HomePage() {
     }
   }
 
+  const handleForceEnd = async () => {
+    const name = nameInput.trim() || 'Гравець'
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/game/force-end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        if (data.ended) {
+          setError('Гру завершено! Тепер ви можете приєднатися.')
+        } else {
+          setError('Хост онлайн. Надіслано запит ведучому на завершення гри, зачекайте...')
+        }
+      } else {
+        setError(data.error || 'Не вдалося завершити гру')
+      }
+    } catch {
+      setError('Сервер недоступний')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleGameStart = () => setAppState('game')
   const handleGameEnd = () => {
     sessionStorage.clear()
@@ -137,7 +164,40 @@ export default function HomePage() {
             />
           </div>
 
-          {error && <p className="enter-error">{error}</p>}
+          {error && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <p className="enter-error" style={{ margin: 0 }}>{error}</p>
+              {error.includes('триває') && (
+                <button
+                  type="button"
+                  onClick={handleForceEnd}
+                  className="force-end-btn"
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    color: '#ef4444',
+                    border: '1.5px solid rgba(239, 68, 68, 0.3)',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    textAlign: 'center'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'
+                    e.currentTarget.style.borderColor = '#ef4444'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+                    e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'
+                  }}
+                >
+                  🛑 Закінчити гру примусово
+                </button>
+              )}
+            </div>
+          )}
 
           <button
             type="submit"

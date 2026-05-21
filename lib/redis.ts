@@ -56,6 +56,8 @@ export interface GameState {
   activeSpeakerId?: string | null
   speakerTimerStartedAt?: number | null
   speakersDone?: string[]
+  forceEndRequested?: boolean
+  forceEndRequestedBy?: string | null
 }
 
 

@@ -47,7 +47,18 @@ export async function POST(req: Request) {
     // Перевіряємо чи гра вже триває (не завершена)
     const gameState = await getGameState()
     if (gameState && gameState.phase !== 'ended') {
-      return NextResponse.json({ error: 'Гра вже триває, будь ласка, зачекайте на її завершення' }, { status: 403 })
+      const now = Date.now()
+      const GAME_TIMEOUT_MS = 90 * 1000
+      const activePlayers = gameState.players.filter(p => now - (p.lastSeen ?? now) < GAME_TIMEOUT_MS)
+
+      if (activePlayers.length === 0) {
+        // У грі немає живих активних гравців -> автоматично завершуємо її!
+        gameState.phase = 'ended'
+        gameState.lastEvent = 'Гру автоматично завершено через неактивність усіх гравців.'
+        await setGameState(gameState)
+      } else {
+        return NextResponse.json({ error: 'Гра вже триває, будь ласка, зачекайте на її завершення' }, { status: 403 })
+      }
     }
 
     const trimmedName = name.trim().slice(0, 20)

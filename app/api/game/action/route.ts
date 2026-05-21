@@ -29,6 +29,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Гравець не знайдений' }, { status: 400 })
     }
 
+    // ─── Обробка примусового завершення гри ───
+    if (action === 'confirm_force_end') {
+      if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+      state.phase = 'ended'
+      state.forceEndRequested = false
+      state.forceEndRequestedBy = null
+      state.lastEvent = 'Ведучий завершив гру за запитом з лобі.'
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
+    if (action === 'reject_force_end') {
+      if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+      state.forceEndRequested = false
+      state.forceEndRequestedBy = null
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
     // ─── Обробка дій паузи (Мета-дії, працюють навіть для мертвих/хостів) ───
     if (action === 'request_pause') {
       state.pauseRequestedBy = actor.name

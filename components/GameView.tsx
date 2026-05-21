@@ -245,6 +245,34 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         )
       )}
 
+      {/* Запит на примусове завершення гри для Хоста (Ведучого) */}
+      {game.forceEndRequested && isHost && (
+        <div className="pause-confirm-modal" style={{ zIndex: 1002 }}>
+          <div className="pause-modal-content" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+            <span className="modal-icon" style={{ filter: 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.4))' }}>⚠️</span>
+            <h3 style={{ color: '#ef4444' }}>Запит на завершення</h3>
+            <p style={{ fontSize: '0.85rem', lineHeight: '1.4' }}>
+              Гравець <strong>{game.forceEndRequestedBy}</strong> намагається приєднатись до лобі та просить завершити поточну гру.
+            </p>
+            <div className="pause-modal-buttons" style={{ marginTop: '16px' }}>
+              <button 
+                className="confirm-btn" 
+                style={{ backgroundColor: '#ef4444', color: 'white' }} 
+                onClick={() => sendAction('confirm_force_end')}
+              >
+                🛑 Завершити гру
+              </button>
+              <button 
+                className="reject-btn" 
+                onClick={() => sendAction('reject_force_end')}
+              >
+                ▶️ Продовжити гру
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="game-container">
 
         {/* Header */}
