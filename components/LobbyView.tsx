@@ -63,7 +63,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
       // 1. Спочатку перевіряємо чи розпочалась гра
       if (gameRes.ok) {
         const game = await gameRes.json()
-        if (game.phase === 'night' || game.phase === 'day' || game.phase === 'ended') {
+        if (game.phase === 'night' || game.phase === 'day') {
           onGameStart()
           return // Виходимо відразу, оскільки ми вже в грі!
         }
