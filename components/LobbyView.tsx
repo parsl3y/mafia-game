@@ -90,7 +90,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
     return () => clearInterval(id)
   }, [fetchAll])
 
-  // ─── Heartbeat кожні 4 сек ────────────────────────────────
+  // ─── Heartbeat кожні 20 сек ────────────────────────────────
   useEffect(() => {
     const beat = async () => {
       try {
@@ -106,7 +106,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
       } catch { /* ignore */ }
     }
     beat() // одразу
-    const id = setInterval(beat, 4000)
+    const id = setInterval(beat, 20000)
     return () => clearInterval(id)
   }, [playerId, onLeave])
 
@@ -185,8 +185,8 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           <div className="players-list">
             {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => {
               const silentMs  = now - (p.lastSeen ?? now)
-              const isWarning = silentMs > 15000 && p.id !== playerId // > 15 сек мовчить
-              const secsLeft  = Math.max(0, Math.ceil((30000 - silentMs) / 1000))
+              const isWarning = silentMs > 150_000 && p.id !== playerId // > 2.5 хв
+              const minsLeft  = Math.max(0, Math.ceil((300_000 - silentMs) / 60_000))
 
               return (
                 <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''} ${isWarning ? 'player-leaving' : ''}`}>
@@ -195,7 +195,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
                   <span className="player-name">{p.name}</span>
                   {p.id === playerId && <span className="player-tag">Ви</span>}
                   {isWarning && (
-                    <span className="player-timeout" title={`Викине через ${secsLeft}с`}>
+                    <span className="player-timeout" title={`Викине через ~${minsLeft} хв`}>
                       ⏳
                     </span>
                   )}
