@@ -504,7 +504,7 @@ html, body {
 /* Місце гравця */
 .player-seat {
   position: absolute;
-  width: 116px;
+  width: 154px;
   background: var(--bg2);
   border: 1.5px solid var(--border);
   border-radius: 14px;
@@ -647,20 +647,22 @@ html, body {
 }
 
 .seat-avatar { 
-  font-size: 2.2rem; 
-  width: 90px; 
-  height: 90px; 
-  line-height: 90px; 
-  margin: 0 auto 8px auto; 
-  border-radius: 50%; 
+  font-size: 2.5rem; 
+  width: 140px; 
+  height: 94px; 
+  line-height: 94px; 
+  margin: 0 auto 10px auto; 
+  border-radius: 8px; 
   background: rgba(255,255,255,0.03);
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+  overflow: hidden;
 }
-.seat-name   { font-size: .72rem; font-weight: 600; word-break: break-word; line-height: 1.2; }
-.seat-role   { font-size: .62rem; margin-top: 3px; font-weight: 500; }
+.seat-name   { font-size: .8rem; font-weight: 600; word-break: break-word; line-height: 1.2; }
+.seat-role   { font-size: .7rem; margin-top: 3px; font-weight: 500; }
 
 /* Responsive — менший стіл на мобільних */
 @media (max-width: 600px) {
-  .circular-arena { transform: scale(.7); transform-origin: top center; margin-bottom: -120px; }
+  .circular-arena { transform: scale(.42); transform-origin: top center; margin-bottom: -320px; }
 }
 
 /* ===================== PLAYER CARD (legacy, unused) ===================== */

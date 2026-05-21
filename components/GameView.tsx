@@ -47,7 +47,7 @@ function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, i
   return (
     <>
       {vTrack && canSee && (
-        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', zIndex: 1 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', borderRadius: 'inherit', overflow: 'hidden', zIndex: 1 }}>
           <VideoTrack trackRef={vTrack} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </div>
       )}
@@ -167,9 +167,9 @@ interface Props {
 }
 
 // ─── Розміщення по колу ───────────────────────────────────
-const TABLE_SIZE = 560   // px (квадрат контейнера)
-const SEAT_RADIUS = 220   // відстань від центру до картки
-const TABLE_RADIUS = 100   // радіус круглого стола
+const TABLE_SIZE = 760   // px (квадрат контейнера)
+const SEAT_RADIUS = 300   // відстань від центру до картки
+const TABLE_RADIUS = 120   // радіус круглого стола
 
 function getSeatPos(index: number, total: number) {
   // Починаємо зверху (12 год), йдемо за годинниковою стрілкою
