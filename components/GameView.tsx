@@ -998,34 +998,63 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     <h2 className="action-title">
                       {game.votingPhase === 'revote' ? '⚠️ Повторне голосування' : '☀️ Денна фаза — Голосування'}
                     </h2>
-                    {iAmAlive ? (
-                      <>
-                        <p className="action-hint">
-                          Оберіть підозрюваного з числа номінованих:
-                          {game.nominatedPlayers && game.nominatedPlayers.length > 0 && (
-                            <span style={{ display: 'block', marginTop: '6px', color: '#f59e0b', fontWeight: 'bold' }}>
-                              {game.nominatedPlayers.map(id => game.players.find(p => p.id === id)?.name).join(', ')}
-                            </span>
-                          )}
-                        </p>
-                        {!actionDone && (
-                          <button 
-                            className="action-btn vote-btn" 
-                            disabled={!selectedTarget || !game.nominatedPlayers?.includes(selectedTarget)} 
-                            onClick={handleNominationVote}
-                          >
-                            🗳️ Проголосувати
-                          </button>
-                        )}
-                        {actionDone && (
-                          <p className="action-done">✅ Голос прийнято ({Object.keys(game.nominationVotes || {}).length} з {alivePlayers.length + 1})</p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="action-hint">💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
+                    
+                    <div className="nominees-list" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {game.nominatedPlayers?.map(nomineeId => {
+                        const nominee = game.players.find(p => p.id === nomineeId);
+                        if (!nominee) return null;
+                        
+                        const voters = Object.entries(game.nominationVotes || {})
+                          .filter(([voterId, targetId]) => targetId === nomineeId)
+                          .map(([voterId]) => game.players.find(p => p.id === voterId)?.name)
+                          .filter(Boolean);
+
+                        const hasVoted = Object.keys(game.nominationVotes || {}).includes(playerId);
+                        const isMyVote = game.nominationVotes?.[playerId] === nomineeId;
+
+                        return (
+                          <div key={nomineeId} className={`nominee-card ${isMyVote ? 'nominee-selected' : ''}`} style={{
+                            padding: '12px 16px',
+                            background: isMyVote ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg3)',
+                            border: `1px solid ${isMyVote ? 'rgba(245, 158, 11, 0.4)' : 'var(--border)'}`,
+                            borderRadius: '12px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isMyVote ? '#f59e0b' : 'var(--text)' }}>
+                                {nominee.name}
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text2)', minHeight: '16px' }}>
+                                {voters.length > 0 ? `Голоси: ${voters.join(', ')}` : 'Немає голосів'}
+                              </span>
+                            </div>
+                            
+                            {iAmAlive && !hasVoted && (
+                              <button 
+                                className="action-btn vote-btn" 
+                                style={{ margin: 0, padding: '8px 16px', fontSize: '0.85rem' }}
+                                onClick={() => {
+                                  sendAction('nomination_vote', nomineeId);
+                                }}
+                              >
+                                🗳️ Проголосувати
+                              </button>
+                            )}
+                            {isMyVote && (
+                              <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.85rem' }}>Ваш вибір ✅</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {!iAmAlive && (
+                      <p className="action-hint" style={{ marginTop: '16px' }}>💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
                     )}
                     {isHost && !phaseAdvanced && (
-                      <button className="phase-btn" onClick={handleNextPhase}>🌙 Завершити голосування</button>
+                      <button className="phase-btn" style={{ marginTop: '20px' }} onClick={handleNextPhase}>🌙 Завершити голосування</button>
                     )}
                   </>
                 )}
