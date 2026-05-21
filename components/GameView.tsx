@@ -99,7 +99,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     return () => clearInterval(id)
   }, [])
 
-  // Heartbeat кожні 4 сек — повідомляє сервер що гравець онлайн
+  // Heartbeat кожні 10 сек — повідомляє сервер що гравець онлайн
   useEffect(() => {
     const beat = async () => {
       try {
@@ -112,7 +112,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       } catch { /* ignore */ }
     }
     beat()
-    const id = setInterval(beat, 4000)
+    const id = setInterval(beat, 10000)
     return () => clearInterval(id)
   }, [playerId, onGameEnd])
 
@@ -232,10 +232,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               const isMine     = p.id === playerId
               const isSelected = selectedTarget === p.id
               const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
-              // Таймаут гравця у грі — 1 хв, іконка та жовтий нік одразу (після 5 сек без heartbeat)
+              // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat
               const silentMs   = now - (p.lastSeen ?? now)
-              const showTimer  = silentMs > 5_000 && p.isAlive
-              const secsLeft   = Math.max(0, Math.ceil((65_000 - silentMs) / 1000))
+              const showTimer  = silentMs > 30_000 && p.isAlive
+              const secsLeft   = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
 
               return (
                 <div

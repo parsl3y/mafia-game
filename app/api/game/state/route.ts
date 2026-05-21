@@ -16,9 +16,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
-    // Очищення офлайн гравців у грі (> 1 хв)
+    // Очищення офлайн гравців у грі (> 1.5 хв)
     const now = Date.now()
-    const GAME_TIMEOUT_MS = 65 * 1000
+    const GAME_TIMEOUT_MS = 90 * 1000
     let stateChanged = false
 
 
