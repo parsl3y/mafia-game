@@ -60,6 +60,16 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         fetch(`/api/game/state?playerId=${playerId}`),
       ])
 
+      // 1. Спочатку перевіряємо чи розпочалась гра
+      if (gameRes.ok) {
+        const game = await gameRes.json()
+        if (game.phase === 'night' || game.phase === 'day' || game.phase === 'ended') {
+          onGameStart()
+          return // Виходимо відразу, оскільки ми вже в грі!
+        }
+      }
+
+      // 2. Перевіряємо стан лобі
       if (lobbyRes.ok) {
         const d = await lobbyRes.json()
         if (Array.isArray(d.players)) {
@@ -68,28 +78,27 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           if (me !== undefined) {
             amHostRef.current = me.isHost
             setAmHost(me.isHost)
-            missingCountRef.current = 0 // reset count
+            missingCountRef.current = 0 // скидаємо лічильник спроб
           } else {
-            // Дозволяємо 3 невдалі спроби (6 сек) перед тим як викинути, на випадок лагу реплікації бази
-            missingCountRef.current += 1
-            if (missingCountRef.current >= 3) {
-              onLeave()
-              return
+            // Якщо лобі повністю порожнє (length === 0), це означає, що хост щойно запустив гру
+            // та очистив лобі. У цьому випадку ми ні в якому разі НЕ викидаємо гравця,
+            // а чекаємо наступного кроку оновлення, де отримаємо стан гри від gameRes.
+            if (d.players.length > 0) {
+              missingCountRef.current += 1
+              if (missingCountRef.current >= 3) {
+                onLeave()
+                return
+              }
             }
           }
         }
       }
 
-      // Налаштування з сервера беремо якщо ми НЕ хост АБО якщо це перше завантаження
+      // 3. Налаштування з сервера беремо якщо ми НЕ хост АБО якщо це перше завантаження
       if (settingsRes.ok && (!amHostRef.current || !hasFetchedSettings)) {
         const s = await settingsRes.json()
         setSettings(s)
         setHasFetchedSettings(true)
-      }
-
-      if (gameRes.ok) {
-        const game = await gameRes.json()
-        if (game.phase === 'night' || game.phase === 'day') onGameStart()
       }
     } catch { /* ignore network errors */ }
   }, [playerId, onGameStart, hasFetchedSettings, onLeave]) // додано onLeave у dependencies
