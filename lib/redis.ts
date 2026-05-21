@@ -82,7 +82,7 @@ function getClient(): RedisClient {
   }
 
   // Fallback: ioredis (тільки локально — lazy require щоб не ламати Vercel білд)
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // eslint-disable-next-line
   const IORedis = require('ioredis')
   const g = global as unknown as { _ioredis: InstanceType<typeof IORedis> }
   if (!g._ioredis) {
