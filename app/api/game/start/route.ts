@@ -74,7 +74,7 @@ export async function POST(req: Request) {
     parts.push(`${civiliansNeeded} громадянин(ів)`)
 
     const state: GameState = {
-      phase:             'night',
+      phase:             'day',
       day:               1,
       players,
       nightTarget:       null,
@@ -84,7 +84,7 @@ export async function POST(req: Request) {
       votes:             {},
       killedLastNight:   null,
       winner:            null,
-      lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Настала перша ніч.`,
+      lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Починається день 1 — знайдіть мафію!`,
     }
 
     await setGameState(state)
