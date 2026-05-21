@@ -53,6 +53,9 @@ export interface GameState {
   sheriffChecks?: Record<string, 'mafia' | 'town'>
   nightStartedAt?: number
   fakeDelays?: Record<string, number>
+  activeSpeakerId?: string | null
+  speakerTimerStartedAt?: number | null
+  speakersDone?: string[]
 }
 
 

@@ -129,9 +129,25 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
       }
     } else if (state.phase === 'day') {
-      if (action === 'vote') {
+      if (action === 'start_speech') {
+        if (playerId !== state.activeSpeakerId) {
+          return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
+        }
+        state.speakerTimerStartedAt = Date.now()
+      } else if (action === 'end_speech') {
+        if (playerId !== state.activeSpeakerId) {
+          return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
+        }
+        advanceSpeaker(state)
+      } else if (action === 'vote') {
+        if (state.activeSpeakerId !== null) {
+          return NextResponse.json({ error: 'Голосування не розпочато, триває круг виступів' }, { status: 400 })
+        }
         state.votes[playerId] = targetId
       } else if (action === 'next_phase') {
+        if (state.activeSpeakerId !== null) {
+          return NextResponse.json({ error: 'Не можна завершити день поки триває круг виступів' }, { status: 400 })
+        }
         return resolveDay(state)
       }
     }
@@ -192,6 +208,14 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   state.nightBlocked = null
   state.nightInvestigated = null
 
+  // Ініціалізація виступів на день
+  state.speakersDone = []
+  const aliveSorted = [...state.players]
+    .filter(p => p.isAlive)
+    .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
+  state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
+  state.speakerTimerStartedAt = null
+
   const winner = checkWinner(state)
   if (winner) {
     state.winner = winner
@@ -251,4 +275,26 @@ async function resolveDay(state: GameState): Promise<NextResponse> {
 
   await setGameState(state)
   return NextResponse.json({ success: true, state, event })
+}
+
+export function advanceSpeaker(state: GameState) {
+  if (!state.activeSpeakerId) return
+
+  if (!state.speakersDone) state.speakersDone = []
+  if (!state.speakersDone.includes(state.activeSpeakerId)) {
+    state.speakersDone.push(state.activeSpeakerId)
+  }
+
+  const aliveSorted = [...state.players]
+    .filter(p => p.isAlive)
+    .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
+
+  const nextSpeaker = aliveSorted.find(p => !state.speakersDone?.includes(p.id))
+  if (nextSpeaker) {
+    state.activeSpeakerId = nextSpeaker.id
+    state.speakerTimerStartedAt = null
+  } else {
+    state.activeSpeakerId = null
+    state.speakerTimerStartedAt = null
+  }
 }

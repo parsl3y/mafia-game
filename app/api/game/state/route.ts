@@ -23,6 +23,18 @@ export async function GET(req: Request) {
 
 
     if (!state.isPaused) {
+      // Автоматичне просування активного спікера, якщо час виступу минув (60 секунд)
+      if (
+        state.phase === 'day' &&
+        state.activeSpeakerId &&
+        state.speakerTimerStartedAt &&
+        now - state.speakerTimerStartedAt >= 60_000
+      ) {
+        const { advanceSpeaker } = require('../action/route')
+        advanceSpeaker(state)
+        stateChanged = true
+      }
+
       state.players = state.players.map(p => {
         // Якщо гравець живий, але не надсилав heartbeat більше 1.5 хвилин
         if (p.isAlive && (now - (p.lastSeen ?? now)) >= GAME_TIMEOUT_MS) {

@@ -74,6 +74,10 @@ export async function POST(req: Request) {
     if (settings.hasProstitute) parts.push('повія')
     parts.push(`${civiliansNeeded} громадянин(ів)`)
 
+    const aliveSorted = [...players]
+      .filter(p => p.isAlive)
+      .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
+
     const state: GameState = {
       phase:             'day',
       day:               1,
@@ -88,6 +92,9 @@ export async function POST(req: Request) {
       lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Починається день 1 — знайдіть мафію!`,
       isPaused:          false,
       pauseRequestedBy:  null,
+      speakersDone:      [],
+      activeSpeakerId:   aliveSorted.length > 0 ? aliveSorted[0].id : null,
+      speakerTimerStartedAt: null,
     }
 
 
