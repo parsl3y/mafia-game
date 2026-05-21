@@ -610,17 +610,6 @@ html, body {
 .player-card  { display: none; }
 .pc-slot      { display: none; }
 
-
-  background: var(--bg2);
-  border: 1.5px solid var(--border);
-  border-radius: 14px;
-  padding: 16px 12px;
-  text-align: center;
-  cursor: default;
-  transition: border-color .2s, transform .15s, box-shadow .2s;
-  position: relative;
-}
-
 .player-selectable {
   cursor: pointer;
 }
