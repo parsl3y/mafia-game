@@ -1176,3 +1176,31 @@ html, body {
 }
 
 
+
+
+/* Sidebar Action Panel on Desktop */
+@media (min-width: 1200px) {
+  .game-container {
+    max-width: none;
+    padding-left: 360px;
+    padding-right: 40px;
+  }
+  .action-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 320px;
+    height: 100vh;
+    border-radius: 0;
+    border: none;
+    border-right: 1px solid var(--border);
+    margin: 0;
+    overflow-y: auto;
+    z-index: 50;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: var(--bg);
+  }
+}
