@@ -169,18 +169,26 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
       peer.on('call', (incomingCall: any) => {
         console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
-        incomingCall.answer() // Відповідаємо без надсилання аудіо назад
+        
+        // Відповідаємо нашим стрімом (який зараз вимкнено/замучено), щоб WebRTC успішно 
+        // домовився про з'єднання на будь-якому пристрої (включаючи iOS, Safari, Chrome)
+        const localStream = localStreamRef.current || (window as any).localAudioStream
+        incomingCall.answer(localStream)
         
         incomingCall.on('stream', (remoteStream: MediaStream) => {
           console.log('Отримано аудіо потік промовця!')
-          if (!audioRef.current) {
-            const audio = document.createElement('audio')
+          let audio = audioRef.current
+          if (!audio) {
+            audio = document.createElement('audio')
             audio.autoplay = true
             audio.style.display = 'none'
             document.body.appendChild(audio)
             audioRef.current = audio
           }
-          audioRef.current.srcObject = remoteStream
+          audio.srcObject = remoteStream
+          audio.muted = false
+          audio.volume = 1.0
+          audio.play().catch(err => console.warn('Помилка відтворення аудіо стріму:', err))
         })
 
         incomingCall.on('close', () => {

@@ -547,6 +547,34 @@ html, body {
   background: rgba(59, 130, 246, 0.12) !important;
   box-shadow: 0 0 16px rgba(96, 165, 250, 0.6) !important;
   animation: pulse-speaking 2s infinite ease-in-out !important;
+  position: relative;
+}
+.seat-speaking::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+  border: 2px solid rgba(96, 165, 250, 0.4);
+  border-radius: 12px;
+  animation: sound-wave 1.5s infinite ease-out;
+  pointer-events: none;
+  z-index: -1;
+}
+.seat-speaking::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+  border: 2px solid rgba(96, 165, 250, 0.2);
+  border-radius: 12px;
+  animation: sound-wave 1.5s infinite ease-out;
+  animation-delay: 0.75s;
+  pointer-events: none;
+  z-index: -1;
 }
 .seat-speaking .seat-name {
   color: #60a5fa !important;
@@ -556,6 +584,16 @@ html, body {
   0% { box-shadow: 0 0 6px rgba(96, 165, 250, 0.3); border-color: rgba(96, 165, 250, 0.5); }
   50% { box-shadow: 0 0 18px rgba(96, 165, 250, 0.8); border-color: rgba(96, 165, 250, 1); }
   100% { box-shadow: 0 0 6px rgba(96, 165, 250, 0.3); border-color: rgba(96, 165, 250, 0.5); }
+}
+@keyframes sound-wave {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
 }
 
 .seat-timer {
