@@ -563,10 +563,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
 
         {/* Winner */}
-        {game.phase === 'ended' && game.winner && (
-          <div className={`winner-banner ${game.winner === 'mafia' ? 'winner-mafia' : 'winner-town'}`}>
+        {game.phase === 'ended' && (
+          <div className={`winner-banner ${game.winner === 'mafia' ? 'winner-mafia' : game.winner === 'town' ? 'winner-town' : 'winner-mafia'}`}>
             <div className="winner-title">
-              {game.winner === 'mafia' ? '🔫 Мафія перемогла!' : '🏙️ Місто перемогло!'}
+              {game.winner === 'mafia' && '🔫 Мафія перемогла!'}
+              {game.winner === 'town' && '🏙️ Місто перемогло!'}
+              {!game.winner && '🛑 Гра завершена ведучим'}
             </div>
             <button className="restart-btn" onClick={onGameEnd}>
               Повернутись до початку
