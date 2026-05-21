@@ -39,6 +39,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
   // useRef — щоб fetchAll завжди бачив актуальне значення без перестворення
   const amHostRef   = useRef(initialHost)
   const settingsRef = useRef(settings)
+  const missingCountRef = useRef(0)
 
   // Тікаємо щосекунди щоб таймер стану гравців оновлювався
   useEffect(() => {
@@ -67,6 +68,14 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           if (me !== undefined) {
             amHostRef.current = me.isHost
             setAmHost(me.isHost)
+            missingCountRef.current = 0 // reset count
+          } else {
+            // Дозволяємо 3 невдалі спроби (6 сек) перед тим як викинути, на випадок лагу реплікації бази
+            missingCountRef.current += 1
+            if (missingCountRef.current >= 3) {
+              onLeave()
+              return
+            }
           }
         }
       }
@@ -83,8 +92,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         if (game.phase === 'night' || game.phase === 'day') onGameStart()
       }
     } catch { /* ignore network errors */ }
-  }, [playerId, onGameStart, hasFetchedSettings]) // не залежить від amHost — читаємо через ref
-
+  }, [playerId, onGameStart, hasFetchedSettings, onLeave]) // додано onLeave у dependencies
 
   useEffect(() => {
     fetchAll()
@@ -96,21 +104,17 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
   useEffect(() => {
     const beat = async () => {
       try {
-        const res = await fetch('/api/lobby/heartbeat', {
+        await fetch('/api/lobby/heartbeat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ playerId }),
         })
-        if (res.status === 404) {
-          // Сервер вже видалив нас (можливо через таймаут іншої сесії)
-          onLeave()
-        }
       } catch { /* ignore */ }
     }
     beat() // одразу
     const id = setInterval(beat, 10000)
     return () => clearInterval(id)
-  }, [playerId, onLeave])
+  }, [playerId])
 
   // ─── Збереження налаштувань ────────────────────────────────
   const saveSettings = async (next: Settings) => {

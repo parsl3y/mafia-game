@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getLobbyPlayers, setLobbyPlayers } from '@/lib/redis'
 
+export const dynamic = 'force-dynamic'
+
+
 // POST /api/lobby/heartbeat — оновлює lastSeen для гравця
 export async function POST(req: Request) {
   try {
