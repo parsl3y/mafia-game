@@ -70,6 +70,7 @@ export interface GameState {
   defenseOrder?: string[]                      // order of defense speeches (tied players)
   defensesDone?: string[]                      // finished defense speeches
   nominationVotes?: Record<string, string>     // voterId → nomineeId (vote target)
+  firstRoundVotes?: Record<string, string>     // voterId → nomineeId (saved first round votes)
 }
 
 

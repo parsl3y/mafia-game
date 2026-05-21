@@ -164,6 +164,24 @@ export async function POST(req: Request) {
         state.votingPhase = 'nominating'
         state.speakerTimerStartedAt = null
 
+      } else if (action === 'force_skip_speaker') {
+        if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+        if (!state.activeSpeakerId) return NextResponse.json({ error: 'Немає активного спікера' }, { status: 400 })
+        
+        // Ведучий примусово завершує виступ/номінацію
+        advanceSpeaker(state)
+        if (state.activeSpeakerId) {
+          state.votingPhase = 'speeches'
+        } else {
+          if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
+            state.votingPhase = 'voting'
+            state.nominationVotes = {}
+          } else {
+            state.votingPhase = null
+          }
+        }
+
+
       // ─── Nomination actions ───
       } else if (action === 'nominate') {
         // Гравець номінує когось після свого виступу
@@ -247,6 +265,10 @@ export async function POST(req: Request) {
         if (!state.nominatedPlayers?.includes(targetId)) {
           return NextResponse.json({ error: 'Цей гравець не номінований' }, { status: 400 })
         }
+        // За правилами ревоуту — ті, між ким нічия, не голосують
+        if (state.votingPhase === 'revote' && state.nominatedPlayers?.includes(playerId)) {
+          return NextResponse.json({ error: 'Гравці на переголосуванні не мають права голосу' }, { status: 400 })
+        }
 
         if (!state.nominationVotes) state.nominationVotes = {}
         state.nominationVotes[playerId] = targetId
@@ -270,6 +292,11 @@ export async function POST(req: Request) {
         }
         advanceDefense(state)
 
+      } else if (action === 'force_skip_defense') {
+        if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+        if (state.votingPhase !== 'defense') return NextResponse.json({ error: 'Зараз не фаза захисту' }, { status: 400 })
+        advanceDefense(state)
+
       // ─── Host resolves voting ───
       } else if (action === 'vote') {
         // Legacy vote — пряме голосування (використовується як fallback)
@@ -284,8 +311,8 @@ export async function POST(req: Request) {
           // Підраховуємо голоси за номінованих та вирішуємо результат
           return resolveNominationVoting(state)
         }
-        if (state.activeSpeakerId !== null) {
-          return NextResponse.json({ error: 'Не можна завершити день поки триває круг виступів' }, { status: 400 })
+        if (state.activeSpeakerId !== null || state.votingPhase === 'defense') {
+          return NextResponse.json({ error: 'Не можна завершити день поки триває круг виступів або захист' }, { status: 400 })
         }
         return resolveDay(state)
       }
@@ -360,6 +387,7 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   state.nominations = {}
   state.nominatedPlayers = []
   state.nominationVotes = {}
+  state.firstRoundVotes = {}
   state.defensePlayerId = null
   state.defenseTimerStartedAt = null
   state.defenseOrder = []
@@ -380,9 +408,25 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
   const votes = state.nominationVotes ?? {}
   const tally: Record<string, number> = {}
 
-  // Рахуємо голоси
-  for (const nomineeId of Object.values(votes)) {
+  // Формуємо лог голосування
+  let voteLog = '\n📋 Деталі голосування:'
+  const nomineeVotesMap: Record<string, string[]> = {}
+
+  for (const [voterId, nomineeId] of Object.entries(votes)) {
     tally[nomineeId] = (tally[nomineeId] || 0) + 1
+    const voter = state.players.find(p => p.id === voterId)?.name || '?'
+    if (!nomineeVotesMap[nomineeId]) nomineeVotesMap[nomineeId] = []
+    nomineeVotesMap[nomineeId].push(voter)
+  }
+
+  // Додаємо інформацію про голоси до логу
+  if (Object.keys(tally).length > 0) {
+    for (const [nomineeId, voters] of Object.entries(nomineeVotesMap)) {
+      const nominee = state.players.find(p => p.id === nomineeId)?.name || '?'
+      voteLog += `\n— За ${nominee} (${voters.length}): ${voters.join(', ')}`
+    }
+  } else {
+    voteLog += ' Ніхто не проголосував.'
   }
 
   // Знаходимо максимум голосів
@@ -393,7 +437,7 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
 
   if (maxVotes === 0) {
     // Ніхто не голосував → нічию не вирішуємо, переходимо до ночі
-    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.')
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog)
   }
 
   // Знаходимо всіх з максимальною кількістю голосів
@@ -406,15 +450,15 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
     const victim = state.players.find(p => p.id === topPlayers[0])
     if (victim) {
       victim.isAlive = false
-      return transitionToNight(state, `Місто виключило ${victim.name}!`)
+      return transitionToNight(state, `Місто виключило ${victim.name}!` + voteLog)
     }
-    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.')
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog)
   }
 
   // Нічия! Перевіряємо чи це вже ревот
   if (state.votingPhase === 'revote') {
     // Після ревота — нікого не виключають
-    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.')
+    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.' + voteLog)
   }
 
   // Перша нічия → захисні промови
@@ -424,12 +468,13 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
   state.defenseTimerStartedAt = null
   state.votingPhase = 'defense'
   state.nominatedPlayers = topPlayers // звужуємо до тих хто в нічиї
+  state.firstRoundVotes = { ...votes } // зберігаємо історію
   state.nominationVotes = {}
 
   const tiedNames = topPlayers
     .map(id => state.players.find(p => p.id === id)?.name ?? '???')
     .join(', ')
-  state.lastEvent = `Нічия між ${tiedNames}! Захисні промови.`
+  state.lastEvent = `Нічия між ${tiedNames}! Захисні промови.` + voteLog
 
   await setGameState(state)
   return NextResponse.json({ success: true, state })
