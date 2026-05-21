@@ -151,11 +151,12 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
     event = 'Тиха ніч — ніхто не загинув.'
   }
 
-  // Результат перевірки шерифа — зберігаємо у lastEvent на стороні клієнта гравця
+  // Результат перевірки шерифа — зберігаємо у lastEvent на стороні клієнта гравця та записуємо в історію sheriffChecks
   if (state.nightInvestigated) {
     const target = state.players.find(p => p.id === state.nightInvestigated)
     if (target) {
-      // Збережемо для шерифа у окремому полі (він побачить при отриманні state зі своїм ID)
+      if (!state.sheriffChecks) state.sheriffChecks = {}
+      state.sheriffChecks[state.nightInvestigated] = target.role === 'mafia' ? 'mafia' : 'town'
       state.lastEvent = event + ` [Шериф: ${target.name} — ${target.role === 'mafia' ? 'МАФІЯ' : 'МИРНИЙ'}]`
     }
   } else {

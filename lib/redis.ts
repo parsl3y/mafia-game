@@ -50,6 +50,7 @@ export interface GameState {
   lastEvent: string | null
   isPaused?: boolean
   pauseRequestedBy?: string | null
+  sheriffChecks?: Record<string, 'mafia' | 'town'>
 }
 
 

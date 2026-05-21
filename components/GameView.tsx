@@ -34,6 +34,7 @@ interface GameState {
   isPaused?: boolean
   pauseRequestedBy?: string | null
   nightActionsStatus?: NightActionsStatus
+  sheriffChecks?: Record<string, 'mafia' | 'town'>
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -326,6 +327,14 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 >
                   {/* Слот-номер */}
                   <div className="seat-slot">#{p.slotNumber ?? i + 1}</div>
+
+                  {/* Sheriff check result circle */}
+                  {game.sheriffChecks?.[p.id] && (
+                    <div
+                      className={`sheriff-check-circle check-${game.sheriffChecks[p.id]}`}
+                      title={game.sheriffChecks[p.id] === 'mafia' ? 'Перевірено: Мафія' : 'Перевірено: Мирний'}
+                    />
+                  )}
 
                   {/* Іконка таймауту */}
                   {showTimer && (

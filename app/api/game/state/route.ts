@@ -83,6 +83,7 @@ export async function GET(req: Request) {
 
     // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
     const isHost = me?.isHost ?? false
+    const isSheriff = me?.role === 'sheriff'
     const responsePayload = {
       ...state,
       players: maskedPlayers,
@@ -92,6 +93,7 @@ export async function GET(req: Request) {
       nightProtected: isHost ? state.nightProtected : null,
       nightBlocked: isHost ? state.nightBlocked : null,
       nightInvestigated: isHost ? state.nightInvestigated : null,
+      sheriffChecks: (isHost || isSheriff) ? (state.sheriffChecks ?? {}) : null,
     }
 
     return NextResponse.json(responsePayload)
