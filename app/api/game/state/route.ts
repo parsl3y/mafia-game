@@ -68,11 +68,33 @@ export async function GET(req: Request) {
       }
     })
 
-    return NextResponse.json({
+    // Розраховуємо статус ходів нічних ролей
+    const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
+    const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
+    const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
+    const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
+
+    const nightActionsStatus = {
+      mafia: { required: mafiaAlive, done: state.nightTarget !== null },
+      sheriff: { required: sheriffAlive, done: state.nightInvestigated !== null },
+      doctor: { required: doctorAlive, done: state.nightProtected !== null },
+      prostitute: { required: prostituteAlive, done: state.nightBlocked !== null },
+    }
+
+    // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
+    const isHost = me?.isHost ?? false
+    const responsePayload = {
       ...state,
       players: maskedPlayers,
       myRole: me?.role ?? null,
-    })
+      nightActionsStatus,
+      nightTarget: isHost ? state.nightTarget : null,
+      nightProtected: isHost ? state.nightProtected : null,
+      nightBlocked: isHost ? state.nightBlocked : null,
+      nightInvestigated: isHost ? state.nightInvestigated : null,
+    }
+
+    return NextResponse.json(responsePayload)
   } catch (err) {
     console.error('GET /api/game/state error:', err)
     return NextResponse.json({ error: 'Redis недоступний' }, { status: 500 })

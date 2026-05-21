@@ -85,8 +85,25 @@ export async function POST(req: Request) {
           state.nightBlocked = targetId
           break
         case 'next_phase':
-          // Обчислюємо результати ночі
-          return resolveNight(state)
+          {
+            // Перевірка чи всі активні ролі зробили хід
+            const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
+            const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
+            const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
+            const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
+
+            const mafiaDone = !mafiaAlive || state.nightTarget !== null
+            const sheriffDone = !sheriffAlive || state.nightInvestigated !== null
+            const doctorDone = !doctorAlive || state.nightProtected !== null
+            const prostituteDone = !prostituteAlive || state.nightBlocked !== null
+
+            if (!(mafiaDone && sheriffDone && doctorDone && prostituteDone)) {
+              return NextResponse.json({ error: 'Не всі активні ролі зробили свій хід!' }, { status: 400 })
+            }
+
+            // Обчислюємо результати ночі
+            return resolveNight(state)
+          }
         default:
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
       }

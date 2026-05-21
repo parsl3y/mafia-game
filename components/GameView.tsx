@@ -15,6 +15,13 @@ interface Player {
   lastSeen?: number
 }
 
+interface NightActionsStatus {
+  mafia: { required: boolean; done: boolean }
+  sheriff: { required: boolean; done: boolean }
+  doctor: { required: boolean; done: boolean }
+  prostitute: { required: boolean; done: boolean }
+}
+
 interface GameState {
   phase: Phase
   day: number
@@ -26,6 +33,7 @@ interface GameState {
   myRole: Role | null
   isPaused?: boolean
   pauseRequestedBy?: string | null
+  nightActionsStatus?: NightActionsStatus
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -180,6 +188,15 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const myMeta      = myRole ? ROLE_META[myRole] : null
   const alivePlayers = game.players.filter(p => p.isAlive && p.id !== playerId)
   const isHost      = me?.isHost ?? false
+
+  // Перевіряємо чи всі активні ролі зробили свій хід
+  const s = game.nightActionsStatus
+  const allNightActionsDone = s
+    ? (!s.mafia.required || s.mafia.done) &&
+      (!s.sheriff.required || s.sheriff.done) &&
+      (!s.doctor.required || s.doctor.done) &&
+      (!s.prostitute.required || s.prostitute.done)
+    : true
 
   // Сортуємо за slotNumber → правильний порядок за годинниковою стрілкою
   const sortedPlayers = [...game.players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
@@ -381,7 +398,39 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   </>
                 )}
                 {isHost && !phaseAdvanced && (
-                  <button className="phase-btn" onClick={handleNextPhase}>☀️ Перейти до дня</button>
+                  <div className="host-night-panel" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', width: '100%' }}>
+                    <div className="roles-status-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', maxWidth: '280px', textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                      {game.nightActionsStatus?.mafia.required && (
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.mafia.done ? '#22c55e' : '#f59e0b' }}>
+                          {game.nightActionsStatus.mafia.done ? '✅ Мафія зробила хід' : '⏳ Мафія обирає ціль...'}
+                        </div>
+                      )}
+                      {game.nightActionsStatus?.sheriff.required && (
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.sheriff.done ? '#22c55e' : '#f59e0b' }}>
+                          {game.nightActionsStatus.sheriff.done ? '✅ Шериф зробив хід' : '⏳ Шериф обирає ціль...'}
+                        </div>
+                      )}
+                      {game.nightActionsStatus?.doctor.required && (
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.doctor.done ? '#22c55e' : '#f59e0b' }}>
+                          {game.nightActionsStatus.doctor.done ? '✅ Лікар зробив хід' : '⏳ Лікар обирає ціль...'}
+                        </div>
+                      )}
+                      {game.nightActionsStatus?.prostitute.required && (
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.prostitute.done ? '#22c55e' : '#f59e0b' }}>
+                          {game.nightActionsStatus.prostitute.done ? '✅ Повія зробила хід' : '⏳ Повія обирає ціль...'}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="phase-btn"
+                      onClick={handleNextPhase}
+                      disabled={!allNightActionsDone}
+                      style={{ opacity: allNightActionsDone ? 1 : 0.4, cursor: allNightActionsDone ? 'pointer' : 'not-allowed' }}
+                      title={!allNightActionsDone ? 'Очікування ходів усіх активних ролей' : ''}
+                    >
+                      ☀️ Перейти до дня
+                    </button>
+                  </div>
                 )}
               </>
             )}
