@@ -59,9 +59,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, state })
     }
 
-    // Звичайні ігрові дії вимагають, щоб гравець був живий
-    if (!actor.isAlive) {
+    // Звичайні ігрові дії вимагають, щоб гравець був живий (крім переходу фаз ведучим)
+    if (!actor.isAlive && action !== 'next_phase') {
       return NextResponse.json({ error: 'Гравець мертвий' }, { status: 400 })
+    }
+
+    // Тільки хост (ведучий) може перемикати фази гри
+    if (action === 'next_phase' && !actor.isHost) {
+      return NextResponse.json({ error: 'Тільки ведучий може перемикати фази' }, { status: 403 })
     }
 
 
