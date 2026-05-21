@@ -28,12 +28,13 @@ interface Props {
 
 export default function LobbyView({ playerId, playerName, isHost: initialHost, onGameStart, onLeave }: Props) {
   const [players, setPlayers]     = useState<Player[]>([])
-  const [settings, setSettings]   = useState<Settings>({ mafiaCount: 1, hasDoctor: true, hasProstitute: false })
+  const [settings, setSettings]   = useState<Settings>({ mafiaCount: 1, hasDoctor: false, hasProstitute: false })
   const [error, setError]         = useState<string | null>(null)
   const [starting, setStarting]   = useState(false)
   const [saving, setSaving]       = useState(false)
   const [amHost, setAmHost]       = useState(initialHost)
   const [now, setNow]             = useState(Date.now()) // для live-оновлення таймеру
+  const [hasFetchedSettings, setHasFetchedSettings] = useState(false)
 
   // useRef — щоб fetchAll завжди бачив актуальне значення без перестворення
   const amHostRef   = useRef(initialHost)
@@ -70,11 +71,11 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         }
       }
 
-      // Налаштування з сервера беремо ТІЛЬКИ коли ми НЕ хост
-      // (хост редагує локально — щоб кнопки реагували миттєво)
-      if (settingsRes.ok && !amHostRef.current) {
+      // Налаштування з сервера беремо якщо ми НЕ хост АБО якщо це перше завантаження
+      if (settingsRes.ok && (!amHostRef.current || !hasFetchedSettings)) {
         const s = await settingsRes.json()
         setSettings(s)
+        setHasFetchedSettings(true)
       }
 
       if (gameRes.ok) {
@@ -82,7 +83,8 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         if (game.phase === 'night' || game.phase === 'day') onGameStart()
       }
     } catch { /* ignore network errors */ }
-  }, [playerId, onGameStart]) // не залежить від amHost — читаємо через ref
+  }, [playerId, onGameStart, hasFetchedSettings]) // не залежить від amHost — читаємо через ref
+
 
   useEffect(() => {
     fetchAll()

@@ -43,7 +43,8 @@ export async function POST(req: Request) {
     }
 
     const trimmedName = name.trim().slice(0, 20)
-    const existing   = await getLobbyPlayers()
+    const rawExisting = await getLobbyPlayers()
+    const existing    = await evictStalePlayers(rawExisting)
 
     if (existing.some(p => p.name.toLowerCase() === trimmedName.toLowerCase())) {
       return NextResponse.json({ error: "Гравець з таким іменем вже є в лобі" }, { status: 409 })
