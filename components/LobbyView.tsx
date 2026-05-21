@@ -196,7 +196,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
                   {p.id === playerId && <span className="player-tag">Ви</span>}
                   {isWarning && (
                     <span className="player-timeout" title={`Викине через ${secsLeft}с`}>
-                      ⏳ {secsLeft}с
+                      ⏳
                     </span>
                   )}
                 </div>
