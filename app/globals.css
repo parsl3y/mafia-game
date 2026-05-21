@@ -548,6 +548,7 @@ html, body {
   box-shadow: 0 0 16px rgba(96, 165, 250, 0.6) !important;
   animation: pulse-speaking 2s infinite ease-in-out !important;
   position: relative;
+  z-index: 5 !important;
 }
 .seat-speaking::before {
   content: '';

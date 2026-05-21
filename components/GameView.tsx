@@ -78,10 +78,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
   // WebRTC / PeerJS Голосовий чат
   const [micStatus, setMicStatus] = useState<'muted' | 'speaking' | 'connecting'>('muted')
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const peerRef = useRef<any>(null)
   const callsRef = useRef<any[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const localStreamRef = useRef<MediaStream | null>(null)
 
   const showNotif = (msg: string) => {
     setNotification(msg)
@@ -143,37 +143,52 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   useEffect(() => {
     if (!game?.id) return
 
-    // 1. Отримуємо локальний стрім мікрофона
+    // 1. Отримуємо локальний стрім мікрофона та кладемо в стан
     if ((window as any).localAudioStream) {
-      localStreamRef.current = (window as any).localAudioStream
+      setLocalStream((window as any).localAudioStream)
     } else {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         stream.getAudioTracks().forEach(t => t.enabled = false)
-        localStreamRef.current = stream
+        setLocalStream(stream)
         ;(window as any).localAudioStream = stream
       }).catch(err => console.error('Помилка доступу до мікрофона:', err))
     }
 
-    // 2. Ініціалізація Peer
+    // 2. Ініціалізація Peer з Google STUN для ідеального проходження NAT/файрволів
     const initPeer = () => {
       const gameId = game.id
       const peerId = `mafia-${gameId}-${playerId}`
       
       console.log('Ініціалізуємо PeerJS:', peerId)
-      const peer = new (window as any).Peer(peerId)
+      const peer = new (window as any).Peer(peerId, {
+        debug: 2,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+          ]
+        }
+      })
       peerRef.current = peer
 
       peer.on('open', () => {
-        console.log('PeerJS успішно підключено!')
+        console.log('PeerJS успішно підключено до сигнального сервера!')
+      })
+
+      peer.on('error', (err: any) => {
+        console.warn('Сигнальна помилка PeerJS (ігноруємо/перепідключаємось):', err)
       })
 
       peer.on('call', (incomingCall: any) => {
         console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
         
-        // Відповідаємо нашим стрімом (який зараз вимкнено/замучено), щоб WebRTC успішно 
-        // домовився про з'єднання на будь-якому пристрої (включаючи iOS, Safari, Chrome)
-        const localStream = localStreamRef.current || (window as any).localAudioStream
-        incomingCall.answer(localStream)
+        // Передаємо локальний стрім (який зараз вимкнено/замучено), щоб WebRTC успішно 
+        // домовився про двосторонній зв'язок на будь-якому пристрої (включаючи iOS, Safari, Chrome)
+        const currentStream = localStream || (window as any).localAudioStream
+        incomingCall.answer(currentStream)
         
         incomingCall.on('stream', (remoteStream: MediaStream) => {
           console.log('Отримано аудіо потік промовця!')
@@ -222,30 +237,43 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     if (!game) return
     const isSpeakingNow = game.activeSpeakerId === playerId && game.speakerTimerStartedAt
 
-    const stream = localStreamRef.current
     const peer = peerRef.current
 
     if (isSpeakingNow) {
-      if (stream && peer) {
+      if (localStream && peer) {
         console.log('🎙️ Ви говорите! Увімкнення трансляції мікрофона для інших.')
         setMicStatus('speaking')
-        stream.getAudioTracks().forEach(t => t.enabled = true)
+        localStream.getAudioTracks().forEach(t => t.enabled = true)
 
         const gameId = game.id || 'mafiagame'
-        game.players.forEach(p => {
-          if (p.id !== playerId && p.isAlive) {
-            const targetPeerId = `mafia-${gameId}-${p.id}`
-            console.log('Дзвонимо до слухача:', targetPeerId)
-            const call = peer.call(targetPeerId, stream)
-            if (call) {
-              callsRef.current.push(call)
+
+        // Функція здійснення дзвінків до всіх живих гравців
+        const makeCalls = () => {
+          game.players.forEach(p => {
+            if (p.id !== playerId && p.isAlive) {
+              const targetPeerId = `mafia-${gameId}-${p.id}`
+              // Перевіряємо чи ми вже успішно дзвонимо цьому гравцю
+              const alreadyCalled = callsRef.current.some(c => c.peer === targetPeerId)
+              if (!alreadyCalled) {
+                console.log('Дзвонимо до слухача:', targetPeerId)
+                const call = peer.call(targetPeerId, localStream)
+                if (call) {
+                  callsRef.current.push(call)
+                }
+              }
             }
-          }
-        })
+          })
+        }
+
+        makeCalls()
+        // Повторюємо спроби дзвінків кожні 4 секунди промови на випадок, якщо хтось 
+        // завантажився із запізненням чи обірвався інтернет!
+        const intervalId = setInterval(makeCalls, 4000)
+        return () => clearInterval(intervalId)
       }
     } else {
-      if (stream) {
-        stream.getAudioTracks().forEach(t => t.enabled = false)
+      if (localStream) {
+        localStream.getAudioTracks().forEach(t => t.enabled = false)
       }
       setMicStatus('muted')
 
@@ -258,7 +286,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.players, playerId, game?.id])
+  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.players, playerId, game?.id, localStream])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
