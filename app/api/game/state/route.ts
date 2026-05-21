@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getGameState } from '@/lib/redis'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/game/state — повертає повний стан гри
 // Ролі інших гравців приховані (крім власної)
 export async function GET(req: Request) {

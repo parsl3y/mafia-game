@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getGameSettings, setGameSettings, getLobbyPlayers, type GameSettings } from '@/lib/redis'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/lobby/settings
 export async function GET() {
   const settings = await getGameSettings()
