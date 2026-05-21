@@ -412,27 +412,29 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 )}
                 {isHost && !phaseAdvanced && (
                   <div className="host-night-panel" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', width: '100%' }}>
-                    <div className="roles-status-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', maxWidth: '280px', textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '10px 14px', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                      {game.nightActionsStatus?.mafia.required && (
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.mafia.done ? '#22c55e' : '#f59e0b' }}>
-                          {game.nightActionsStatus.mafia.done ? '✅ Мафія зробила хід' : '⏳ Мафія обирає ціль...'}
-                        </div>
-                      )}
-                      {game.nightActionsStatus?.sheriff.required && (
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.sheriff.done ? '#22c55e' : '#f59e0b' }}>
-                          {game.nightActionsStatus.sheriff.done ? '✅ Шериф зробив хід' : '⏳ Шериф обирає ціль...'}
-                        </div>
-                      )}
-                      {game.nightActionsStatus?.doctor.required && (
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.doctor.done ? '#22c55e' : '#f59e0b' }}>
-                          {game.nightActionsStatus.doctor.done ? '✅ Лікар зробив хід' : '⏳ Лікар обирає ціль...'}
-                        </div>
-                      )}
-                      {game.nightActionsStatus?.prostitute.required && (
-                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: game.nightActionsStatus.prostitute.done ? '#22c55e' : '#f59e0b' }}>
-                          {game.nightActionsStatus.prostitute.done ? '✅ Повія зробила хід' : '⏳ Повія обирає ціль...'}
-                        </div>
-                      )}
+                    <div className="roles-status-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '280px', textAlign: 'center', background: 'rgba(255,255,255,0.03)', padding: '16px 20px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, color: allNightActionsDone ? '#22c55e' : '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                        {allNightActionsDone ? '✅ Всі нічні ходи завершено' : '⏳ Очікуємо завершення нічних ходів...'}
+                      </div>
+                      
+                      {/* Анонімні кружки-індикатори для приховування живих/мертвих ролей */}
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '4px' }}>
+                        {game.nightActionsStatus && Object.entries(game.nightActionsStatus).map(([roleKey, item]: [string, any]) => (
+                          <div
+                            key={roleKey}
+                            style={{
+                              width: '10px',
+                              height: '10px',
+                              borderRadius: '50%',
+                              backgroundColor: item.done ? '#22c55e' : '#f59e0b',
+                              opacity: item.done ? 1 : 0.4,
+                              boxShadow: item.done ? '0 0 8px #22c55e' : '0 0 4px #f59e0b',
+                              transition: 'all 0.3s ease'
+                            }}
+                            title={item.done ? 'Хід зроблено' : 'Очікуємо хід...'}
+                          />
+                        ))}
+                      </div>
                     </div>
                     <button
                       className="phase-btn"

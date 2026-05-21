@@ -51,6 +51,8 @@ export interface GameState {
   isPaused?: boolean
   pauseRequestedBy?: string | null
   sheriffChecks?: Record<string, 'mafia' | 'town'>
+  nightStartedAt?: number
+  fakeDelays?: Record<string, number>
 }
 
 

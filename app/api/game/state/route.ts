@@ -68,17 +68,40 @@ export async function GET(req: Request) {
       }
     })
 
-    // Розраховуємо статус ходів нічних ролей
+    // Розраховуємо статус ходів нічних ролей із маскуванням затримок
+    const nowTime = Date.now()
+    const nightStartedAt = state.nightStartedAt ?? nowTime
+    const fakeDelays = state.fakeDelays ?? { mafia: 0, sheriff: 0, doctor: 0, prostitute: 0 }
+    const timeElapsed = nowTime - nightStartedAt
+
     const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
     const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
     const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
     const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
 
+    // Ролі вважаються готовими, якщо минув фейковий час затримки (для приховування смертей)
+    // ТА у випадку живої ролі — вона дійсно зробила свій вибір.
+    const mafiaDone = mafiaAlive 
+      ? (state.nightTarget !== null && timeElapsed >= (fakeDelays.mafia ?? 0))
+      : (timeElapsed >= (fakeDelays.mafia ?? 0))
+
+    const sheriffDone = sheriffAlive
+      ? (state.nightInvestigated !== null && timeElapsed >= (fakeDelays.sheriff ?? 0))
+      : (timeElapsed >= (fakeDelays.sheriff ?? 0))
+
+    const doctorDone = doctorAlive
+      ? (state.nightProtected !== null && timeElapsed >= (fakeDelays.doctor ?? 0))
+      : (timeElapsed >= (fakeDelays.doctor ?? 0))
+
+    const prostituteDone = prostituteAlive
+      ? (state.nightBlocked !== null && timeElapsed >= (fakeDelays.prostitute ?? 0))
+      : (timeElapsed >= (fakeDelays.prostitute ?? 0))
+
     const nightActionsStatus = {
-      mafia: { required: mafiaAlive, done: state.nightTarget !== null },
-      sheriff: { required: sheriffAlive, done: state.nightInvestigated !== null },
-      doctor: { required: doctorAlive, done: state.nightProtected !== null },
-      prostitute: { required: prostituteAlive, done: state.nightBlocked !== null },
+      mafia: { required: mafiaAlive, done: mafiaDone },
+      sheriff: { required: sheriffAlive, done: sheriffDone },
+      doctor: { required: doctorAlive, done: doctorDone },
+      prostitute: { required: prostituteAlive, done: prostituteDone },
     }
 
     // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
