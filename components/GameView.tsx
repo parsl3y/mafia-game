@@ -380,31 +380,35 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         </div>
 
         {/* Action Panel */}
-        {game.phase !== 'ended' && iAmAlive && (
+        {game.phase !== 'ended' && (iAmAlive || isHost) && (
           <div className="action-panel">
             {game.phase === 'night' && (
               <>
                 <h2 className="action-title">🌙 Нічна фаза</h2>
-                {myRole === 'civilian' ? (
-                  <p className="action-hint">Ви громадянин — спіть та чекайте на ранок.</p>
+                {iAmAlive ? (
+                  myRole === 'civilian' ? (
+                    <p className="action-hint">Ви громадянин — спіть та чекайте на ранок.</p>
+                  ) : (
+                    <>
+                      <p className="action-hint">
+                        {myMeta?.nightAction === 'kill'        && 'Оберіть жертву для вбивства:'}
+                        {myMeta?.nightAction === 'heal'        && 'Оберіть гравця для захисту:'}
+                        {myMeta?.nightAction === 'investigate' && 'Оберіть гравця для перевірки:'}
+                        {myMeta?.nightAction === 'block'       && 'Оберіть гравця для блокування:'}
+                      </p>
+                      {investigateResult && (
+                        <div className="investigate-result">🔍 {investigateResult}</div>
+                      )}
+                      {!actionDone && (
+                        <button className="action-btn" disabled={!selectedTarget} onClick={handleNightAction}>
+                          {myMeta?.icon} Підтвердити
+                        </button>
+                      )}
+                      {actionDone && <p className="action-done">✅ Дія виконана</p>}
+                    </>
+                  )
                 ) : (
-                  <>
-                    <p className="action-hint">
-                      {myMeta?.nightAction === 'kill'        && 'Оберіть жертву для вбивства:'}
-                      {myMeta?.nightAction === 'heal'        && 'Оберіть гравця для захисту:'}
-                      {myMeta?.nightAction === 'investigate' && 'Оберіть гравця для перевірки:'}
-                      {myMeta?.nightAction === 'block'       && 'Оберіть гравця для блокування:'}
-                    </p>
-                    {investigateResult && (
-                      <div className="investigate-result">🔍 {investigateResult}</div>
-                    )}
-                    {!actionDone && (
-                      <button className="action-btn" disabled={!selectedTarget} onClick={handleNightAction}>
-                        {myMeta?.icon} Підтвердити
-                      </button>
-                    )}
-                    {actionDone && <p className="action-done">✅ Дія виконана</p>}
-                  </>
+                  <p className="action-hint">💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
                 )}
                 {isHost && !phaseAdvanced && (
                   <div className="host-night-panel" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', width: '100%' }}>
@@ -447,14 +451,20 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
             {game.phase === 'day' && (
               <>
                 <h2 className="action-title">☀️ Денна фаза — Голосування</h2>
-                <p className="action-hint">Оберіть підозрюваного для виключення:</p>
-                {!actionDone && (
-                  <button className="action-btn vote-btn" disabled={!selectedTarget} onClick={handleVote}>
-                    🗳️ Проголосувати
-                  </button>
-                )}
-                {actionDone && (
-                  <p className="action-done">✅ Голос прийнято ({Object.keys(game.votes).length} з {alivePlayers.length + 1})</p>
+                {iAmAlive ? (
+                  <>
+                    <p className="action-hint">Оберіть підозрюваного для виключення:</p>
+                    {!actionDone && (
+                      <button className="action-btn vote-btn" disabled={!selectedTarget} onClick={handleVote}>
+                        🗳️ Проголосувати
+                      </button>
+                    )}
+                    {actionDone && (
+                      <p className="action-done">✅ Голос прийнято ({Object.keys(game.votes).length} з {alivePlayers.length + 1})</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="action-hint">💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
                 )}
                 {isHost && !phaseAdvanced && (
                   <button className="phase-btn" onClick={handleNextPhase}>🌙 Завершити голосування</button>
@@ -465,7 +475,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         )}
 
         {/* Глядач */}
-        {!iAmAlive && game.phase !== 'ended' && (
+        {!iAmAlive && !isHost && game.phase !== 'ended' && (
           <div className="spectator-panel">💀 Ви мертві — спостерігайте за грою</div>
         )}
 
