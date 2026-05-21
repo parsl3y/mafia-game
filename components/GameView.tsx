@@ -36,6 +36,11 @@ interface GameState {
   pauseRequestedBy?: string | null
   nightActionsStatus?: NightActionsStatus
   sheriffChecks?: Record<string, 'mafia' | 'town'>
+  activeSpeakerId?: string | null
+  speakerTimerStartedAt?: number | null
+  speakersDone?: string[]
+  forceEndRequested?: boolean
+  forceEndRequestedBy?: string | null
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -436,6 +441,17 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   // Сортуємо за slotNumber → правильний порядок за годинниковою стрілкою
   const sortedPlayers = [...game.players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
 
+  const handleReturnToStart = async () => {
+    if (isHost) {
+      try {
+        await fetch('/api/game/reset', { method: 'POST' })
+      } catch (err) {
+        console.warn('Не вдалося скинути гру:', err)
+      }
+    }
+    onGameEnd()
+  }
+
   return (
     <div className={`game-screen ${game.phase === 'night' ? 'phase-night' : game.phase === 'day' ? 'phase-day' : 'phase-ended'}`}>
 
@@ -570,7 +586,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               {game.winner === 'town' && '🏙️ Місто перемогло!'}
               {!game.winner && '🛑 Гра завершена ведучим'}
             </div>
-            <button className="restart-btn" onClick={onGameEnd}>
+            <button className="restart-btn" onClick={handleReturnToStart}>
               Повернутись до початку
             </button>
           </div>
