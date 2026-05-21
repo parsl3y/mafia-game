@@ -167,9 +167,9 @@ interface Props {
 }
 
 // ─── Розміщення по колу ───────────────────────────────────
-const TABLE_SIZE = 760   // px (квадрат контейнера)
-const SEAT_RADIUS = 300   // відстань від центру до картки
-const TABLE_RADIUS = 120   // радіус круглого стола
+const TABLE_SIZE = 880   // px (квадрат контейнера)
+const SEAT_RADIUS = 350   // відстань від центру до картки
+const TABLE_RADIUS = 140   // радіус круглого стола
 
 function getSeatPos(index: number, total: number) {
   // Починаємо зверху (12 год), йдемо за годинниковою стрілкою

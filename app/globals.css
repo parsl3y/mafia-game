@@ -470,6 +470,7 @@ html, body {
 .arena-wrapper {
   display: flex;
   justify-content: center;
+  margin-top: 60px;
   margin-bottom: 24px;
   overflow: hidden;
 }
@@ -669,7 +670,7 @@ html, body {
 
 /* Responsive — менший стіл на мобільних */
 @media (max-width: 600px) {
-  .circular-arena { transform: scale(.42); transform-origin: top center; margin-bottom: -320px; }
+  .circular-arena { transform: scale(.42); transform-origin: top center; margin-bottom: -480px; }
 }
 
 /* ===================== PLAYER CARD (legacy, unused) ===================== */
