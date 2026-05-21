@@ -587,12 +587,24 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     )
   }
 
-  const isPublishingMedia = iAmAlive && (game.phase !== 'night' || myRole === 'mafia')
+  const iAmSpeakingNow = (playerId === game.activeSpeakerId && !!game.speakerTimerStartedAt) || 
+                         (playerId === game.defensePlayerId && !!game.defenseTimerStartedAt)
+
+  const isPublishingVideo = iAmAlive && (game.phase !== 'night' || myRole === 'mafia')
+  
+  let isPublishingAudio = false
+  if (iAmAlive) {
+    if (game.phase === 'night') {
+      if (myRole === 'mafia') isPublishingAudio = true
+    } else {
+      if (iAmSpeakingNow) isPublishingAudio = true
+    }
+  }
 
   return (
     <LiveKitRoom
-      video={isPublishingMedia}
-      audio={isPublishingMedia}
+      video={isPublishingVideo}
+      audio={isPublishingAudio}
       token={lkToken}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       connect={true}
