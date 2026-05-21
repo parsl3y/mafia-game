@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getLobbyPlayers, addPlayerToLobby, setLobbyPlayers, Player } from '@/lib/redis'
+import { getLobbyPlayers, addPlayerToLobby, setLobbyPlayers, getGameState, Player } from '@/lib/redis'
 import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
@@ -42,6 +42,12 @@ export async function POST(req: Request) {
 
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
       return NextResponse.json({ error: "Ім'я повинно бути мінімум 2 символи" }, { status: 400 })
+    }
+
+    // Перевіряємо чи гра вже триває (не завершена)
+    const gameState = await getGameState()
+    if (gameState && gameState.phase !== 'ended') {
+      return NextResponse.json({ error: 'Гра вже триває, будь ласка, зачекайте на її завершення' }, { status: 403 })
     }
 
     const trimmedName = name.trim().slice(0, 20)
