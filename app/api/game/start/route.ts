@@ -86,7 +86,10 @@ export async function POST(req: Request) {
       killedLastNight:   null,
       winner:            null,
       lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Починається день 1 — знайдіть мафію!`,
+      isPaused:          false,
+      pauseRequestedBy:  null,
     }
+
 
     await setGameState(state)
     await clearLobby()

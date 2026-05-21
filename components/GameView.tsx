@@ -24,6 +24,8 @@ interface GameState {
   winner: 'mafia' | 'town' | null
   lastEvent: string | null
   myRole: Role | null
+  isPaused?: boolean
+  pauseRequestedBy?: string | null
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -75,17 +77,22 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       const res = await fetch(`/api/game/state?playerId=${playerId}`)
       if (!res.ok) return
       const data: GameState = await res.json()
-      setGame(prev => {
-        if (prev && prev.phase !== data.phase) {
-          setSelectedTarget(null)
-          setActionDone(false)
-          setPhaseAdvanced(false)
-          if (data.lastEvent) showNotif(data.lastEvent)
-        }
-        return data
-      })
+      setGame(data)
     } catch { /* ignore */ }
   }, [playerId])
+
+  // Скидаємо прапорці дій та оновлюємо події лише коли реально змінюється фаза
+  useEffect(() => {
+    if (!game) return
+    setSelectedTarget(null)
+    setActionDone(false)
+    setPhaseAdvanced(false)
+    setInvestigateResult(null)
+    if (game.lastEvent) showNotif(game.lastEvent)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.phase])
+
+
 
   useEffect(() => {
     fetchState()
@@ -183,14 +190,58 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       {/* Notification */}
       {notification && <div className="game-notification">{notification}</div>}
 
+      {/* Fullscreen Pause Overlay */}
+      {game.isPaused && (
+        <div className="pause-fullscreen-overlay">
+          <div className="pause-overlay-content">
+            <span className="pause-icon">⏸️</span>
+            <h2>ГРА НА ПАУЗІ</h2>
+            <p>Ведучий призупинив хід гри.</p>
+            {isHost ? (
+              <button className="resume-btn" onClick={() => sendAction('resume_game')}>▶️ Зняти з паузи</button>
+            ) : (
+              <p className="spectator-hint">Очікуйте, поки хост зніме гру з паузи...</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pause Request Confirmation / Alert */}
+      {game.pauseRequestedBy && (
+        isHost ? (
+          <div className="pause-confirm-modal">
+            <div className="pause-modal-content">
+              <span className="modal-icon">⏸️</span>
+              <h3>Запит на паузу</h3>
+              <p>Гравець <strong>{game.pauseRequestedBy}</strong> просить зупинити гру.</p>
+              <div className="pause-modal-buttons">
+                <button className="confirm-btn" onClick={() => sendAction('confirm_pause')}>Так, зупинити</button>
+                <button className="reject-btn" onClick={() => sendAction('reject_pause')}>Ні</button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="pause-request-alert">
+            ⏳ Гравець <strong>{game.pauseRequestedBy}</strong> попросив паузу. Очікування хоста...
+          </div>
+        )
+      )}
+
       <div className="game-container">
 
         {/* Header */}
         <header className="game-header">
-          <div className="game-phase-badge">
-            {game.phase === 'night'  && '🌙 Ніч '   + game.day}
-            {game.phase === 'day'    && '☀️ День '   + game.day}
-            {game.phase === 'ended'  && '🏁 Гра завершена'}
+          <div className="header-left" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="game-phase-badge">
+              {game.phase === 'night'  && '🌙 Ніч '   + game.day}
+              {game.phase === 'day'    && '☀️ День '   + game.day}
+              {game.phase === 'ended'  && '🏁 Гра завершена'}
+            </div>
+            {game.phase !== 'ended' && (
+              <button className="pause-trigger-btn" onClick={() => sendAction('request_pause')}>
+                ⏸️ Пауза
+              </button>
+            )}
           </div>
           <div className="game-me-info">
             <span>{playerName}</span>
@@ -201,6 +252,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
             )}
           </div>
         </header>
+
 
         {/* Winner */}
         {game.phase === 'ended' && game.winner && (
@@ -232,10 +284,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               const isMine     = p.id === playerId
               const isSelected = selectedTarget === p.id
               const canSelect  = !isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone
-              // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat
+              // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat (заморожено на паузі)
               const silentMs   = now - (p.lastSeen ?? now)
-              const showTimer  = silentMs > 30_000 && p.isAlive
+              const showTimer  = silentMs > 30_000 && p.isAlive && !game.isPaused
               const secsLeft   = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
+
 
               return (
                 <div

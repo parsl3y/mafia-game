@@ -25,9 +25,45 @@ export async function POST(req: Request) {
     }
 
     const actor = state.players.find(p => p.id === playerId)
-    if (!actor || !actor.isAlive) {
-      return NextResponse.json({ error: 'Гравець не знайдений або мертвий' }, { status: 400 })
+    if (!actor) {
+      return NextResponse.json({ error: 'Гравець не знайдений' }, { status: 400 })
     }
+
+    // ─── Обробка дій паузи (Мета-дії, працюють навіть для мертвих/хостів) ───
+    if (action === 'request_pause') {
+      state.pauseRequestedBy = actor.name
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
+    if (action === 'confirm_pause') {
+      if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+      state.isPaused = true
+      state.pauseRequestedBy = null
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
+    if (action === 'reject_pause') {
+      if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+      state.pauseRequestedBy = null
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
+    if (action === 'resume_game') {
+      if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
+      state.isPaused = false
+      state.pauseRequestedBy = null
+      await setGameState(state)
+      return NextResponse.json({ success: true, state })
+    }
+
+    // Звичайні ігрові дії вимагають, щоб гравець був живий
+    if (!actor.isAlive) {
+      return NextResponse.json({ error: 'Гравець мертвий' }, { status: 400 })
+    }
+
 
     if (state.phase === 'night') {
       // Нічні дії

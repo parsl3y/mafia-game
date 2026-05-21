@@ -48,7 +48,10 @@ export interface GameState {
   killedLastNight: string | null
   winner: 'mafia' | 'town' | null
   lastEvent: string | null
+  isPaused?: boolean
+  pauseRequestedBy?: string | null
 }
+
 
 // ==============================
 // Unified client
