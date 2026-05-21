@@ -165,7 +165,8 @@ export async function getGameState(): Promise<GameState | null> {
 }
 
 export async function setGameState(state: GameState): Promise<void> {
-  await redis().set(GAME_KEY, JSON.stringify(state), { ex: 60 * 60 * 6 })
+  const ttl = state.phase === 'ended' ? 300 : 60 * 60 * 6 // 5 хвилин для завершеної гри, інакше 6 годин
+  await redis().set(GAME_KEY, JSON.stringify(state), { ex: ttl })
 }
 
 export async function clearGameState(): Promise<void> {
