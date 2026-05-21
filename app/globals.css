@@ -504,7 +504,7 @@ html, body {
 /* Місце гравця */
 .player-seat {
   position: absolute;
-  width: 84px;
+  width: 116px;
   background: var(--bg2);
   border: 1.5px solid var(--border);
   border-radius: 14px;
@@ -646,7 +646,15 @@ html, body {
   color: #f59e0b;
 }
 
-.seat-avatar { font-size: 1.6rem; margin-bottom: 3px; }
+.seat-avatar { 
+  font-size: 2.2rem; 
+  width: 90px; 
+  height: 90px; 
+  line-height: 90px; 
+  margin: 0 auto 8px auto; 
+  border-radius: 50%; 
+  background: rgba(255,255,255,0.03);
+}
 .seat-name   { font-size: .72rem; font-weight: 600; word-break: break-word; line-height: 1.2; }
 .seat-role   { font-size: .62rem; margin-top: 3px; font-weight: 500; }
 
