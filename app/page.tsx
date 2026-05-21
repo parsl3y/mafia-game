@@ -55,6 +55,18 @@ export default function HomePage() {
     setLoading(true)
     setError(null)
 
+    // Запит дозволу на мікрофон перед входом в лобі
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getAudioTracks().forEach(t => t.enabled = false)
+      ;(window as any).localAudioStream = stream
+    } catch (err) {
+      console.warn('Мікрофон не доступний або відхилено:', err)
+      setError('Для гри обов’язково потрібен доступ до мікрофона! Будь ласка, дозвольте доступ у браузері.')
+      setLoading(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/lobby', {
         method: 'POST',

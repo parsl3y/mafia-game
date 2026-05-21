@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 type Phase = 'night' | 'day' | 'ended'
@@ -76,6 +76,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const [investigateResult, setInvestigateResult] = useState<string | null>(null)
   const [now, setNow]                       = useState(Date.now())
 
+  // WebRTC / PeerJS Голосовий чат
+  const [micStatus, setMicStatus] = useState<'muted' | 'speaking' | 'connecting'>('muted')
+  const peerRef = useRef<any>(null)
+  const callsRef = useRef<any[]>([])
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
+
   const showNotif = (msg: string) => {
     setNotification(msg)
     setTimeout(() => setNotification(null), 5000)
@@ -131,6 +138,119 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const id = setInterval(beat, 10000)
     return () => clearInterval(id)
   }, [playerId, onGameEnd])
+
+  // ─── Голосовий чат: Завантаження та ініціалізація PeerJS ───
+  useEffect(() => {
+    if (!game?.id) return
+
+    // 1. Отримуємо локальний стрім мікрофона
+    if ((window as any).localAudioStream) {
+      localStreamRef.current = (window as any).localAudioStream
+    } else {
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        stream.getAudioTracks().forEach(t => t.enabled = false)
+        localStreamRef.current = stream
+        ;(window as any).localAudioStream = stream
+      }).catch(err => console.error('Помилка доступу до мікрофона:', err))
+    }
+
+    // 2. Ініціалізація Peer
+    const initPeer = () => {
+      const gameId = game.id
+      const peerId = `mafia-${gameId}-${playerId}`
+      
+      console.log('Ініціалізуємо PeerJS:', peerId)
+      const peer = new (window as any).Peer(peerId)
+      peerRef.current = peer
+
+      peer.on('open', () => {
+        console.log('PeerJS успішно підключено!')
+      })
+
+      peer.on('call', (incomingCall: any) => {
+        console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
+        incomingCall.answer() // Відповідаємо без надсилання аудіо назад
+        
+        incomingCall.on('stream', (remoteStream: MediaStream) => {
+          console.log('Отримано аудіо потік промовця!')
+          if (!audioRef.current) {
+            const audio = document.createElement('audio')
+            audio.autoplay = true
+            audio.style.display = 'none'
+            document.body.appendChild(audio)
+            audioRef.current = audio
+          }
+          audioRef.current.srcObject = remoteStream
+        })
+
+        incomingCall.on('close', () => {
+          if (audioRef.current) {
+            audioRef.current.srcObject = null
+          }
+        })
+      })
+    }
+
+    if ((window as any).Peer) {
+      initPeer()
+    } else {
+      const script = document.createElement('script')
+      script.src = 'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js'
+      script.async = true
+      script.onload = initPeer
+      document.body.appendChild(script)
+      return () => {
+        script.remove()
+        if (peerRef.current) {
+          peerRef.current.destroy()
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.id, playerId])
+
+  // ─── Голосовий чат: Трансляція промови ───
+  useEffect(() => {
+    if (!game) return
+    const isSpeakingNow = game.activeSpeakerId === playerId && game.speakerTimerStartedAt
+
+    const stream = localStreamRef.current
+    const peer = peerRef.current
+
+    if (isSpeakingNow) {
+      if (stream && peer) {
+        console.log('🎙️ Ви говорите! Увімкнення трансляції мікрофона для інших.')
+        setMicStatus('speaking')
+        stream.getAudioTracks().forEach(t => t.enabled = true)
+
+        const gameId = game.id || 'mafiagame'
+        game.players.forEach(p => {
+          if (p.id !== playerId && p.isAlive) {
+            const targetPeerId = `mafia-${gameId}-${p.id}`
+            console.log('Дзвонимо до слухача:', targetPeerId)
+            const call = peer.call(targetPeerId, stream)
+            if (call) {
+              callsRef.current.push(call)
+            }
+          }
+        })
+      }
+    } else {
+      if (stream) {
+        stream.getAudioTracks().forEach(t => t.enabled = false)
+      }
+      setMicStatus('muted')
+
+      if (callsRef.current.length > 0) {
+        console.log('🔇 Промова закінчилась. Мутимо мікрофон та закриваємо з’єднання.')
+        callsRef.current.forEach(c => {
+          try { c.close() } catch {}
+        })
+        callsRef.current = []
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.players, playerId, game?.id])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
@@ -448,7 +568,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   </div>
 
                   {/* Ім'я */}
-                  <div className="seat-name">{p.name}</div>
+                  <div className="seat-name">
+                    {p.name} {p.id === game.activeSpeakerId && '🎙️'}
+                  </div>
 
                   {/* Роль (своя або відкрита після смерті / мафія бачить мафію) */}
                   {isMine && myMeta && (
