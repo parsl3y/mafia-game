@@ -79,7 +79,7 @@ interface NightActionsStatus {
   don?: { required: boolean; done: boolean }
 }
 
-type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | null
+type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | 'last_words' | null
 
 interface GameState {
   id?: string
