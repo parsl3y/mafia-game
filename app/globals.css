@@ -670,7 +670,7 @@ html, body {
 
 /* Responsive — менший стіл на мобільних */
 @media (max-width: 600px) {
-  .circular-arena { transform: scale(.42); transform-origin: top center; margin-bottom: -480px; }
+  .circular-arena { transform: scale(.32); transform-origin: top center; margin-bottom: -800px; }
 }
 
 /* ===================== PLAYER CARD (legacy, unused) ===================== */
