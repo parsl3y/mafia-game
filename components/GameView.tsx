@@ -198,6 +198,7 @@ function getSeatPos(index: number, total: number) {
 
 export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const [game, setGame] = useState<GameState | null>(null)
+  const [forceLocalMute, setForceLocalMute] = useState(false)
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null)
   const [actionDone, setActionDone] = useState(false)
   const [phaseAdvanced, setPhaseAdvanced] = useState(false)
@@ -259,6 +260,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setActionDone(false)
     setPhaseAdvanced(false)
     setInvestigateResult(null)
+    setForceLocalMute(false)
     if (game.lastEvent) showNotif(game.lastEvent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId])
@@ -293,6 +295,20 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
+
+  // Автоматичне локальне вимкнення мікрофона при закінченні часу
+  useEffect(() => {
+    if (!game) return
+    const activeId = game.votingPhase === 'defense' ? game.defensePlayerId : game.activeSpeakerId
+    const startTime = game.votingPhase === 'defense' ? game.defenseTimerStartedAt : game.speakerTimerStartedAt
+    const totalTime = game.votingPhase === 'defense' ? 30_000 : 60_000
+    if (activeId === playerId && startTime) {
+      const remainingMs = totalTime - (now - startTime)
+      if (remainingMs <= 0) {
+        setForceLocalMute(true)
+      }
+    }
+  }, [now, game, playerId])
 
   // Heartbeat кожні 10 сек — повідомляє сервер що гравець онлайн
   useEffect(() => {
@@ -420,8 +436,8 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   // ─── Голосовий чат: Трансляція промови ───
   useEffect(() => {
     if (!game) return
-    const isSpeakingNow = (game.activeSpeakerId === playerId && game.speakerTimerStartedAt) ||
-      (game.defensePlayerId === playerId && game.defenseTimerStartedAt)
+    const isSpeakingNow = ((game.activeSpeakerId === playerId && game.speakerTimerStartedAt) ||
+      (game.defensePlayerId === playerId && game.defenseTimerStartedAt)) && !forceLocalMute
 
     const peer = peerRef.current
 
@@ -489,7 +505,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.defensePlayerId, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream])
+  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.defensePlayerId, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream, forceLocalMute])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
@@ -620,7 +636,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const isPublishingVideo = (iAmAlive || iAmSpeakingNow) && (game.phase !== 'night' || myRole === 'mafia' || myRole === 'don')
 
   let isPublishingAudio = false
-  if (iAmAlive || iAmSpeakingNow) {
+  if ((iAmAlive || iAmSpeakingNow) && !forceLocalMute) {
     if (game.phase === 'night') {
       if (myRole === 'mafia' || myRole === 'don') isPublishingAudio = true
     } else {
@@ -806,7 +822,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                           </div>
                           {activeId === playerId && (
                             <button
-                              onClick={() => sendAction(game.votingPhase === 'defense' ? 'end_defense' : 'end_speech')}
+                              onClick={() => {
+                                setForceLocalMute(true)
+                                sendAction(game.votingPhase === 'defense' ? 'end_defense' : 'end_speech')
+                              }}
                               style={{
                                 marginTop: '8px',
                                 padding: '4px 10px',
@@ -1115,7 +1134,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       {game.activeSpeakerId === playerId && (
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
                           {game.speakerTimerStartedAt ? (
-                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => sendAction('end_speech')}>
+                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => {
+                              setForceLocalMute(true)
+                              sendAction('end_speech')
+                            }}>
                               🛑 Завершити промову
                             </button>
                           ) : (
@@ -1147,7 +1169,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       {game.activeSpeakerId === playerId && (
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
                           {game.speakerTimerStartedAt ? (
-                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => sendAction('end_speech')}>
+                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => {
+                              setForceLocalMute(true)
+                              sendAction('end_speech')
+                            }}>
                               🛑 Завершити виступ
                             </button>
                           ) : (
@@ -1336,7 +1361,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       {game.defensePlayerId === playerId && (
                         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
                           {game.defenseTimerStartedAt ? (
-                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => sendAction('end_defense')}>
+                            <button className="action-btn" style={{ backgroundColor: '#ef4444' }} onClick={() => {
+                              setForceLocalMute(true)
+                              sendAction('end_defense')
+                            }}>
                               🛑 Завершити захист
                             </button>
                           ) : (
