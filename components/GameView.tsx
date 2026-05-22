@@ -90,6 +90,8 @@ interface GameState {
   isPaused?: boolean
   pauseRequestedBy?: string | null
   nightActionsStatus?: NightActionsStatus
+  nightRevealTime?: number | null
+  lampsRevealed?: boolean
   sheriffChecks?: Record<string, 'mafia' | 'town'>
   activeSpeakerId?: string | null
   speakerTimerStartedAt?: number | null
@@ -213,9 +215,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   }, [game?.id, playerId, playerName, lkToken])
 
   // ─── Затримка одночасного загоряння ламп ───
-  const [lampsRevealed, setLampsRevealed] = useState(false)
-  const lampsTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const lampsAllDoneRef = useRef(false)
+  const lampsRevealed = game?.lampsRevealed || (game?.nightRevealTime ? now >= game.nightRevealTime : false)
 
   // WebRTC / PeerJS Голосовий чат
   const [micStatus, setMicStatus] = useState<'muted' | 'speaking' | 'connecting'>('muted')
@@ -247,37 +247,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setActionDone(false)
     setPhaseAdvanced(false)
     setInvestigateResult(null)
-    // Скидаємо стан ламп при зміні фази
-    setLampsRevealed(false)
-    lampsAllDoneRef.current = false
-    if (lampsTimerRef.current) {
-      clearTimeout(lampsTimerRef.current)
-      lampsTimerRef.current = null
-    }
     if (game.lastEvent) showNotif(game.lastEvent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.phase])
-
-  // ─── Ефект: коли всі нічні ходи зроблені — запускаємо рандомну затримку 5-15 сек, потім загоряються всі лампи разом ───
-  useEffect(() => {
-    if (!game || game.phase !== 'night') return
-    const s = game.nightActionsStatus
-    const allDone = s
-      ? (!s.mafia.required || s.mafia.done) &&
-        (!s.sheriff.required || s.sheriff.done) &&
-        (!s.doctor.required || s.doctor.done) &&
-        (!s.prostitute.required || s.prostitute.done)
-      : true
-
-    if (allDone && !lampsAllDoneRef.current) {
-      lampsAllDoneRef.current = true
-      const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс
-      lampsTimerRef.current = setTimeout(() => {
-        setLampsRevealed(true)
-      }, delay)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.nightActionsStatus, game?.phase])
 
 
 

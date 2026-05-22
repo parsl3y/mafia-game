@@ -111,34 +111,11 @@ export async function POST(req: Request) {
           break
         case 'next_phase':
           {
-            // Перевірка чи всі активні ролі зробили хід із масуванням затримок
             const nowTime = Date.now()
-            const nightStartedAt = state.nightStartedAt ?? nowTime
-            const fakeDelays = state.fakeDelays ?? { mafia: 0, sheriff: 0, doctor: 0, prostitute: 0 }
-            const timeElapsed = nowTime - nightStartedAt
+            const revealTime = state.nightRevealTime
+            const lampsRevealed = revealTime ? (nowTime >= revealTime) : false
 
-            const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
-            const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
-            const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
-            const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
-
-            const mafiaDone = mafiaAlive 
-              ? (state.nightTarget !== null && timeElapsed >= (fakeDelays.mafia ?? 0))
-              : (timeElapsed >= (fakeDelays.mafia ?? 0))
-
-            const sheriffDone = sheriffAlive
-              ? (state.nightInvestigated !== null && timeElapsed >= (fakeDelays.sheriff ?? 0))
-              : (timeElapsed >= (fakeDelays.sheriff ?? 0))
-
-            const doctorDone = doctorAlive
-              ? (state.nightProtected !== null && timeElapsed >= (fakeDelays.doctor ?? 0))
-              : (timeElapsed >= (fakeDelays.doctor ?? 0))
-
-            const prostituteDone = prostituteAlive
-              ? (state.nightBlocked !== null && timeElapsed >= (fakeDelays.prostitute ?? 0))
-              : (timeElapsed >= (fakeDelays.prostitute ?? 0))
-
-            if (!(mafiaDone && sheriffDone && doctorDone && prostituteDone)) {
+            if (!lampsRevealed) {
               return NextResponse.json({ error: 'Нічні ролі ще роблять свої ходи...' }, { status: 400 })
             }
 
@@ -147,6 +124,23 @@ export async function POST(req: Request) {
           }
         default:
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
+      }
+
+      // Перевіряємо чи всі активні ролі зробили свій хід
+      const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
+      const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
+      const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
+      const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
+
+      const allMovesMade = 
+        (!mafiaAlive || state.nightTarget !== null) &&
+        (!sheriffAlive || state.nightInvestigated !== null) &&
+        (!doctorAlive || state.nightProtected !== null) &&
+        (!prostituteAlive || state.nightBlocked !== null)
+
+      if (allMovesMade && !state.nightRevealTime) {
+        const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс (5-15 секунд)
+        state.nightRevealTime = Date.now() + delay
       }
     } else if (state.phase === 'day') {
       // ─── Speech phase actions ───
@@ -490,6 +484,7 @@ async function transitionToNight(state: GameState, event: string): Promise<NextR
   state.phase = 'night'
   state.day += 1
   state.nightStartedAt = Date.now()
+  state.nightRevealTime = null
   state.fakeDelays = {
     mafia: Math.floor(Math.random() * 4000) + 1000,
     sheriff: Math.floor(Math.random() * 4000) + 1000,

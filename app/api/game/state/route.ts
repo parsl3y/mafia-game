@@ -79,7 +79,25 @@ export async function GET(req: Request) {
       }
     }
 
+    // Перевіряємо чи всі активні ролі зробили свій хід вночі
+    if (state.phase === 'night') {
+      const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
+      const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
+      const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
+      const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
 
+      const allMovesMade = 
+        (!mafiaAlive || state.nightTarget !== null) &&
+        (!sheriffAlive || state.nightInvestigated !== null) &&
+        (!doctorAlive || state.nightProtected !== null) &&
+        (!prostituteAlive || state.nightBlocked !== null)
+
+      if (allMovesMade && !state.nightRevealTime) {
+        const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс (5-15 секунд)
+        state.nightRevealTime = Date.now() + delay
+        await setGameState(state)
+      }
+    }
 
     // Знаходимо поточного гравця
     const me = state.players.find(p => p.id === playerId)
@@ -95,40 +113,21 @@ export async function GET(req: Request) {
       }
     })
 
-    // Розраховуємо статус ходів нічних ролей із маскуванням затримок
+    // Розраховуємо статус ходів нічних ролей із синхронізованою затримкою
     const nowTime = Date.now()
-    const nightStartedAt = state.nightStartedAt ?? nowTime
-    const fakeDelays = state.fakeDelays ?? { mafia: 0, sheriff: 0, doctor: 0, prostitute: 0 }
-    const timeElapsed = nowTime - nightStartedAt
+    const revealTime = state.nightRevealTime
+    const lampsRevealed = revealTime ? (nowTime >= revealTime) : false
 
     const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
     const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
     const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
     const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
 
-    // Ролі вважаються готовими, якщо минув фейковий час затримки (для приховування смертей)
-    // ТА у випадку живої ролі — вона дійсно зробила свій вибір.
-    const mafiaDone = mafiaAlive 
-      ? (state.nightTarget !== null && timeElapsed >= (fakeDelays.mafia ?? 0))
-      : (timeElapsed >= (fakeDelays.mafia ?? 0))
-
-    const sheriffDone = sheriffAlive
-      ? (state.nightInvestigated !== null && timeElapsed >= (fakeDelays.sheriff ?? 0))
-      : (timeElapsed >= (fakeDelays.sheriff ?? 0))
-
-    const doctorDone = doctorAlive
-      ? (state.nightProtected !== null && timeElapsed >= (fakeDelays.doctor ?? 0))
-      : (timeElapsed >= (fakeDelays.doctor ?? 0))
-
-    const prostituteDone = prostituteAlive
-      ? (state.nightBlocked !== null && timeElapsed >= (fakeDelays.prostitute ?? 0))
-      : (timeElapsed >= (fakeDelays.prostitute ?? 0))
-
     const nightActionsStatus = {
-      mafia: { required: mafiaAlive, done: mafiaDone },
-      sheriff: { required: sheriffAlive, done: sheriffDone },
-      doctor: { required: doctorAlive, done: doctorDone },
-      prostitute: { required: prostituteAlive, done: prostituteDone },
+      mafia: { required: mafiaAlive, done: lampsRevealed },
+      sheriff: { required: sheriffAlive, done: lampsRevealed },
+      doctor: { required: doctorAlive, done: lampsRevealed },
+      prostitute: { required: prostituteAlive, done: lampsRevealed },
     }
 
     // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
@@ -146,6 +145,7 @@ export async function GET(req: Request) {
       players: maskedPlayers,
       myRole: me?.role ?? null,
       nightActionsStatus,
+      lampsRevealed,
       lastEvent: maskedLastEvent,
       nightTarget: isHost ? state.nightTarget : null,
       nightProtected: isHost ? state.nightProtected : null,
