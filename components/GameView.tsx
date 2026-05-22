@@ -252,7 +252,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     } catch { /* ignore */ }
   }, [playerId])
 
-  // Скидаємо прапорці дій та оновлюємо події лише коли реально змінюється фаза
+  // Скидаємо прапорці дій та оновлюємо події лише коли реально змінюється фаза чи підфази
   useEffect(() => {
     if (!game) return
     setSelectedTarget(null)
@@ -261,7 +261,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setInvestigateResult(null)
     if (game.lastEvent) showNotif(game.lastEvent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.phase])
+  }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId])
 
   // Скидаємо actionDone при зміні фази / після завершення нічної дії
   useEffect(() => {

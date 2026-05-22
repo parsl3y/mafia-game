@@ -113,9 +113,18 @@ export function advanceSpeaker(state: GameState): void {
     state.speakersDone.push(state.activeSpeakerId)
   }
 
+  const totalPlayers = state.players.length || 1
+  const idealStartSlot = ((state.day - 1) % totalPlayers) + 1
+
   const aliveSorted = [...state.players]
     .filter(p => p.isAlive)
-    .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
+    .sort((a, b) => {
+      const slotA = a.slotNumber ?? 0
+      const slotB = b.slotNumber ?? 0
+      const relA = (slotA - idealStartSlot + totalPlayers) % totalPlayers
+      const relB = (slotB - idealStartSlot + totalPlayers) % totalPlayers
+      return relA - relB
+    })
 
   const nextSpeaker = aliveSorted.find(p => !state.speakersDone?.includes(p.id))
   if (nextSpeaker) {

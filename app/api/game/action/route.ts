@@ -434,11 +434,19 @@ async function resolveNight(state: GameState, playerId: string): Promise<NextRes
   state.nightDonInvestigated = null
   state.mafiaKillVotes = {}
 
-  // Ініціалізація виступів на день
+  // Ініціалізація виступів на день (починаючи з нового слота кожен круг)
   state.speakersDone = []
+  const totalPlayers = state.players.length || 1
+  const idealStartSlot = ((state.day - 1) % totalPlayers) + 1
   const aliveSorted = [...state.players]
     .filter(p => p.isAlive)
-    .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
+    .sort((a, b) => {
+      const slotA = a.slotNumber ?? 0
+      const slotB = b.slotNumber ?? 0
+      const relA = (slotA - idealStartSlot + totalPlayers) % totalPlayers
+      const relB = (slotB - idealStartSlot + totalPlayers) % totalPlayers
+      return relA - relB
+    })
   state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
   state.speakerTimerStartedAt = null
 
