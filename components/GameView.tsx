@@ -961,21 +961,17 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     {/* Слот-номер */}
                     <div className="seat-slot">#{p.slotNumber ?? i + 1}</div>
 
-                    {/* Скільки голосів за цього гравця */}
+                    {/* Порядковий номер виставлення гравця на голосування */}
                     {game.phase === 'day' && (() => {
-                      // Показуємо legacy votes, або nominationVotes, або скільки разів номінували
-                      let voteCount = 0
-                      if (game.votingPhase === 'voting' || game.votingPhase === 'revote') {
-                        voteCount = Object.values(game.nominationVotes || {}).filter(v => v === p.id).length
-                      } else if (game.votingPhase === 'nominating' || game.votingPhase === 'speeches') {
-                        voteCount = Object.values(game.nominations || {}).filter(v => v === p.id).length
-                      } else {
-                        voteCount = Object.values(game.votes || {}).filter(v => v === p.id).length
+                      const nomIndex = game.nominatedPlayers?.indexOf(p.id) ?? -1
+                      if (nomIndex !== -1) {
+                        return (
+                          <div className="seat-votes" style={{ backgroundColor: '#f59e0b', color: '#111827', fontWeight: 800, border: '1px solid rgba(0,0,0,0.15)' }}>
+                            👉 №{nomIndex + 1}
+                          </div>
+                        )
                       }
-
-                      return voteCount > 0
-                        ? <div className="seat-votes">🗳️ {voteCount}</div>
-                        : null
+                      return null
                     })()}
 
                     {/* Результати перевірки шерифа — лише шерифу */}
