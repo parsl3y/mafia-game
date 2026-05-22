@@ -186,13 +186,35 @@ const SEAT_RADIUS = 350   // відстань від центру до карт�
 const TABLE_RADIUS = 140   // радіус круглого стола
 
 function getSeatPos(index: number, total: number) {
-  // Починаємо зверху (12 год), йдемо за годинниковою стрілкою
-  const angle = -Math.PI / 2 + (2 * Math.PI * index) / total
+  if (total === 10) {
+    // При максимальній кількості (10 гравців): 3 зверху, 3 знизу, 2 зліва, 2 справа
+    // Координати симетрично розташовані навколо центральної точки (440, 440)
+    const maxPositions = [
+      { x: 200, y: 110 }, // Зверху-зліва
+      { x: 440, y: 110 }, // Зверху-посередині
+      { x: 680, y: 110 }, // Зверху-справа
+      { x: 770, y: 280 }, // Справа-вгорі
+      { x: 770, y: 600 }, // Справа-внизу
+      { x: 680, y: 770 }, // Знизу-справа
+      { x: 440, y: 770 }, // Знизу-посередині
+      { x: 200, y: 770 }, // Знизу-зліва
+      { x: 110, y: 600 }, // Зліва-внизу
+      { x: 110, y: 280 }  // Зліва-вгорі
+    ]
+    return maxPositions[index] || { x: 440, y: 440 }
+  }
+
+  // Коли кількість менша за максимум: довільна форма у вигляді ракушки (спіралі)
+  // Радіус плавно збільшується від 310px до 370px, створюючи витончений спіральний ефект
+  const startAngle = -Math.PI / 2
+  const angle = startAngle + (2 * Math.PI * index) / total
+  const spiralRadius = 310 + (index / (total || 1)) * 60
+  
   const cx = TABLE_SIZE / 2
   const cy = TABLE_SIZE / 2
   return {
-    x: cx + SEAT_RADIUS * Math.cos(angle),
-    y: cy + SEAT_RADIUS * Math.sin(angle),
+    x: cx + spiralRadius * Math.cos(angle),
+    y: cy + spiralRadius * Math.sin(angle),
   }
 }
 
@@ -238,7 +260,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const callsRef = useRef<any[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const volumeAnalyserRef = useRef<any>(null)
-  const lastSeenEventRef = useRef<string | null>(null)
+  const [lastSeenEvent, setLastSeenEvent] = useState<string | null>(null)
 
   const showNotif = (msg: string) => {
     setNotification(msg)
@@ -262,12 +284,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setPhaseAdvanced(false)
     setInvestigateResult(null)
     setForceLocalMute(false)
-    if (game.lastEvent && game.lastEvent !== lastSeenEventRef.current) {
+    if (game.lastEvent && game.lastEvent !== lastSeenEvent) {
       showNotif(game.lastEvent)
-      lastSeenEventRef.current = game.lastEvent
+      setLastSeenEvent(game.lastEvent)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId, game?.lastEvent])
+  }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId, game?.lastEvent, lastSeenEvent])
 
   // Скидаємо actionDone при зміні фази / після завершення нічної дії
   useEffect(() => {

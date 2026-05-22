@@ -505,7 +505,7 @@ html, body {
 /* Місце гравця */
 .player-seat {
   position: absolute;
-  width: 164px;
+  width: 190px;
   background: var(--bg2);
   border: 1.5px solid var(--border);
   border-radius: 14px;
@@ -656,9 +656,9 @@ html, body {
 
 .seat-avatar { 
   font-size: 2.5rem; 
-  width: 140px; 
-  height: 94px; 
-  line-height: 94px; 
+  width: 166px; 
+  height: 112px; 
+  line-height: 112px; 
   margin: 0 auto 10px auto; 
   border-radius: 8px; 
   background: rgba(255,255,255,0.03);
