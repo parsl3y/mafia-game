@@ -5,7 +5,7 @@ import {
   canNominate,
   checkWinner,
   finishSpeakerTurn,
-  isMafiaTeamRole,
+  maskGameStateForPlayer,
 } from '@/lib/game-logic'
 import { advanceDefense } from '../action/route'
 
@@ -78,69 +78,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const me = state.players.find(p => p.id === playerId)
-
-    const maskedPlayers = state.players.map(p => {
-      const showRole =
-        p.id === playerId ||
-        (isMafiaTeamRole(me?.role ?? null) && isMafiaTeamRole(p.role))
-      return {
-        ...p,
-        role: showRole ? p.role : null,
-      }
-    })
-
-    const nowTime = Date.now()
-    const revealTime = state.nightRevealTime
-    const lampsRevealed = revealTime ? nowTime >= revealTime : false
-    const nightMovesComplete = areAllNightMovesComplete(state)
-
-    const mafiaAlive = state.players.some(p => isMafiaTeamRole(p.role) && p.isAlive)
-    const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
-    const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
-    const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
-    const donAlive = state.players.some(p => p.role === 'don' && p.isAlive)
-
-    const nightActionsStatus = {
-      mafia: { required: mafiaAlive, done: nightMovesComplete && lampsRevealed },
-      sheriff: { required: sheriffAlive, done: nightMovesComplete && lampsRevealed },
-      doctor: { required: doctorAlive, done: nightMovesComplete && lampsRevealed },
-      prostitute: { required: prostituteAlive, done: nightMovesComplete && lampsRevealed },
-      don: { required: donAlive, done: nightMovesComplete && lampsRevealed },
-    }
-
-    const isHost = me?.isHost ?? false
-    const isSheriff = me?.role === 'sheriff'
-    const isDon = me?.role === 'don'
-
-    let maskedLastEvent = state.lastEvent
-    if (maskedLastEvent && !isHost && !isSheriff) {
-      maskedLastEvent = maskedLastEvent.replace(/\s*\[Шериф:.*?\]/, '')
-    }
-
-    const canEndNight = nightMovesComplete && lampsRevealed
-
-    const responsePayload = {
-      ...state,
-      players: maskedPlayers,
-      myRole: me?.role ?? null,
-      nightActionsStatus,
-      lampsRevealed,
-      nightMovesComplete,
-      canEndNight,
-      allowNominations: canNominate(state),
-      lastEvent: maskedLastEvent,
-      nightTarget: isHost ? state.nightTarget : null,
-      nightProtected: isHost ? state.nightProtected : null,
-      nightBlocked: isHost ? state.nightBlocked : null,
-      nightInvestigated: isHost ? state.nightInvestigated : null,
-      sheriffChecks: (isHost || isSheriff) ? (state.sheriffChecks ?? {}) : null,
-      donChecks: (isHost || isDon) ? (state.donChecks ?? {}) : null,
-      mafiaKillVotes:
-        isHost || isMafiaTeamRole(me?.role ?? null) ? (state.mafiaKillVotes ?? {}) : null,
-    }
-
-    return NextResponse.json(responsePayload)
+    return NextResponse.json(maskGameStateForPlayer(state, playerId))
   } catch (err) {
     console.error('GET /api/game/state error:', err)
     return NextResponse.json({ error: 'Redis недоступний' }, { status: 500 })

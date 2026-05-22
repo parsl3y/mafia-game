@@ -130,3 +130,68 @@ export function advanceSpeaker(state: GameState): void {
 export function canNominate(state: GameState): boolean {
   return state.day > 1
 }
+
+/** Клієнтський стан з прихованими перевірками та ролями */
+export function maskGameStateForPlayer(state: GameState, playerId: string | null) {
+  const me = playerId ? state.players.find(p => p.id === playerId) : undefined
+  const isSheriff = me?.role === 'sheriff'
+  const isDon = me?.role === 'don'
+  const isHost = me?.isHost ?? false
+  const myMafiaTeam = isMafiaTeamRole(me?.role ?? null)
+
+  const maskedPlayers = state.players.map(p => ({
+    ...p,
+    role:
+      p.id === playerId || (myMafiaTeam && isMafiaTeamRole(p.role))
+        ? p.role
+        : null,
+  }))
+
+  let maskedLastEvent = state.lastEvent
+  if (maskedLastEvent && !isSheriff) {
+    maskedLastEvent = maskedLastEvent.replace(/\s*\[Шериф:.*?\]/, '')
+  }
+
+  const nowTime = Date.now()
+  const revealTime = state.nightRevealTime
+  const lampsRevealed = revealTime ? nowTime >= revealTime : false
+  const nightMovesComplete = areAllNightMovesComplete(state)
+  const canEndNight = nightMovesComplete && lampsRevealed
+
+  const mafiaAlive = state.players.some(p => isMafiaTeamRole(p.role) && p.isAlive)
+  const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
+  const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
+  const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
+  const donAlive = state.players.some(p => p.role === 'don' && p.isAlive)
+
+  const nightActionsStatus = {
+    mafia: { required: mafiaAlive, done: nightMovesComplete && lampsRevealed },
+    sheriff: { required: sheriffAlive, done: nightMovesComplete && lampsRevealed },
+    doctor: { required: doctorAlive, done: nightMovesComplete && lampsRevealed },
+    prostitute: { required: prostituteAlive, done: nightMovesComplete && lampsRevealed },
+    don: { required: donAlive, done: nightMovesComplete && lampsRevealed },
+  }
+
+  return {
+    ...state,
+    players: maskedPlayers,
+    myRole: me?.role ?? null,
+    nightActionsStatus,
+    lampsRevealed,
+    nightMovesComplete,
+    canEndNight,
+    allowNominations: canNominate(state),
+    lastEvent: maskedLastEvent,
+    nightTarget: isHost ? state.nightTarget : null,
+    nightProtected: isHost ? state.nightProtected : null,
+    nightBlocked: isHost ? state.nightBlocked : null,
+    nightInvestigated: isSheriff ? state.nightInvestigated : null,
+    nightDonInvestigated: isDon ? state.nightDonInvestigated : null,
+    sheriffChecks: isSheriff ? (state.sheriffChecks ?? {}) : undefined,
+    donChecks: isDon ? (state.donChecks ?? {}) : undefined,
+    sheriffInvestigatedTonight: isSheriff ? (state.nightInvestigated ?? null) : null,
+    donInvestigatedTonight: isDon ? (state.nightDonInvestigated ?? null) : null,
+    mafiaKillVotes:
+      isHost || myMafiaTeam ? (state.mafiaKillVotes ?? {}) : undefined,
+  }
+}

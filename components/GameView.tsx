@@ -98,6 +98,8 @@ interface GameState {
   lampsRevealed?: boolean
   sheriffChecks?: Record<string, 'mafia' | 'town'>
   donChecks?: Record<string, 'sheriff' | 'not_sheriff'>
+  sheriffInvestigatedTonight?: string | null
+  donInvestigatedTonight?: string | null
   mafiaKillVotes?: Record<string, string>
   allowNominations?: boolean
   canEndNight?: boolean
@@ -261,15 +263,22 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.phase])
 
-  // Дон: після голосування мафії знову дозволяємо перевірку
+  // Скидаємо actionDone при зміні фази / після завершення нічної дії
   useEffect(() => {
-    if (game?.myRole !== 'don') return
-    const team = game.players.filter(p => p.isAlive && (p.role === 'mafia' || p.role === 'don'))
-    const votes = game.mafiaKillVotes ?? {}
-    if (team.length > 1 && team.every(m => votes[m.id])) {
-      setActionDone(false)
+    if (!game || game.phase !== 'night') return
+    if (game.myRole === 'sheriff' && game.sheriffInvestigatedTonight) {
+      setActionDone(true)
+    } else if (game.myRole === 'don') {
+      if (game.donInvestigatedTonight) {
+        setActionDone(true)
+      } else {
+        const team = game.players.filter(p => p.isAlive && (p.role === 'mafia' || p.role === 'don'))
+        const votes = game.mafiaKillVotes ?? {}
+        const killDone = team.length <= 1 || team.every(m => votes[m.id])
+        if (killDone) setActionDone(false)
+      }
     }
-  }, [game?.mafiaKillVotes, game?.myRole, game?.players])
+  }, [game])
 
 
 
@@ -488,10 +497,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       body: JSON.stringify({ playerId, action, targetId }),
     })
     const data = await res.json()
-    if (data.state) {
-      setGame(data.state)
-      if (data.event) showNotif(data.event)
+    if (!res.ok) {
+      if (data.error) showNotif(data.error)
+      return data
     }
+    await fetchState()
+    if (data.event) showNotif(data.event)
     return data
   }
 
@@ -506,7 +517,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
     let actionName: string | null = null
     if (game.myRole === 'don') {
-      const killDone = Object.keys(mafiaVotes).length >= mafiaTeam.length
+      const killDone = mafiaTeam.every(m => mafiaVotes[m.id] !== undefined)
       actionName = killDone ? 'don_investigate' : 'mafia_vote'
     } else if (game.myRole === 'mafia') {
       actionName = usesTeamVote ? 'mafia_vote' : 'kill'
@@ -517,12 +528,28 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
     if (!actionName) return
     await sendAction(actionName, selectedTarget)
-    setActionDone(true)
-    if (game.myRole === 'sheriff') {
-      const res = await fetch(`/api/game/state?playerId=${playerId}`)
-      const data = await res.json()
-      const match = data.lastEvent?.match(/\[Шериф: (.+)\]/)
-      if (match) setInvestigateResult(match[1])
+
+    const res = await fetch(`/api/game/state?playerId=${playerId}`)
+    if (res.ok) {
+      const data: GameState = await res.json()
+      setGame(data)
+      if (game.myRole === 'sheriff' && selectedTarget && data.sheriffChecks?.[selectedTarget]) {
+        const r = data.sheriffChecks[selectedTarget]
+        const name = game.players.find(p => p.id === selectedTarget)?.name ?? '?'
+        setInvestigateResult(`${name} — ${r === 'mafia' ? 'МАФІЯ' : 'МИРНИЙ'}`)
+      }
+      if (game.myRole === 'don' && actionName === 'don_investigate' && selectedTarget) {
+        const r = data.donChecks?.[selectedTarget]
+        const name = game.players.find(p => p.id === selectedTarget)?.name ?? '?'
+        if (r === 'sheriff') setInvestigateResult(`${name} — ШЕРИФ ⭐`)
+        else if (r === 'not_sheriff') setInvestigateResult(`${name} — не шериф`)
+      }
+    }
+    if (game.myRole === 'don' && actionName === 'mafia_vote') {
+      setActionDone(false)
+      showNotif('Голос за вбивство прийнято')
+    } else {
+      setActionDone(true)
     }
   }
 
@@ -902,19 +929,20 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       : null
                   })()}
 
-                  {/* Sheriff check result circle */}
-                  {game.sheriffChecks?.[p.id] && (
+                  {/* Результати перевірки шерифа — лише шерифу */}
+                  {myRole === 'sheriff' && game.sheriffChecks?.[p.id] && (
                     <div
                       className={`sheriff-check-circle check-${game.sheriffChecks[p.id]}`}
-                      title={game.sheriffChecks[p.id] === 'mafia' ? 'Перевірено: Мафія' : 'Перевірено: Мирний'}
+                      title={game.sheriffChecks[p.id] === 'mafia' ? 'Ваша перевірка: Мафія' : 'Ваша перевірка: Мирний'}
                     />
                   )}
 
-                  {game.donChecks?.[p.id] === 'sheriff' && (
-                    <div className="don-check-mark don-check-sheriff" title="Дон: це шериф">⭐</div>
+                  {/* Результати перевірки дона — лише дону */}
+                  {myRole === 'don' && game.donChecks?.[p.id] === 'sheriff' && (
+                    <div className="don-check-mark don-check-sheriff" title="Ваша перевірка: шериф">⭐</div>
                   )}
-                  {game.donChecks?.[p.id] === 'not_sheriff' && (
-                    <div className="don-check-mark don-check-not-sheriff" title="Дон: не шериф" />
+                  {myRole === 'don' && game.donChecks?.[p.id] === 'not_sheriff' && (
+                    <div className="don-check-mark don-check-not-sheriff" title="Ваша перевірка: не шериф" />
                   )}
 
                   {/* Іконка таймауту */}
@@ -991,10 +1019,15 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                           const votes = game.mafiaKillVotes ?? {}
                           const voted = votes[playerId]
                           if (team.length > 1) {
-                            if (myRole === 'don' && Object.keys(votes).length >= team.length) {
-                              return 'Дон: оберіть кого перевірити (шериф чи ні):'
+                            const allVoted = team.every(m => votes[m.id])
+                            if (myRole === 'don' && allVoted && !game.donInvestigatedTonight) {
+                              return 'Дон: оберіть одного гравця для перевірки (1 раз за ніч):'
                             }
-                            return `Мафія голосує за жертву (${Object.keys(votes).length}/${team.length}):`
+                            if (myRole === 'don' && votes[playerId] && !allVoted) {
+                              return 'Ви проголосували за вбивство. Очікуйте інших мафіозі...'
+                            }
+                            const voteCount = team.filter(m => votes[m.id]).length
+                            return `Мафія голосує за жертву (${voteCount}/${team.length}):`
                           }
                           return 'Оберіть жертву для вбивства:'
                         })()}
@@ -1005,7 +1038,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       {investigateResult && (
                         <div className="investigate-result">🔍 {investigateResult}</div>
                       )}
-                      {!actionDone && (
+                      {!actionDone && !(game.myRole === 'sheriff' && game.sheriffInvestigatedTonight) && !(game.myRole === 'don' && game.donInvestigatedTonight) && (
                         <button className="action-btn" disabled={!selectedTarget} onClick={handleNightAction}>
                           {myMeta?.icon} Підтвердити
                         </button>

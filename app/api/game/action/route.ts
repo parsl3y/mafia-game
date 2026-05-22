@@ -8,9 +8,18 @@ import {
   finishSpeakerTurn,
   isMafiaKillVotingComplete,
   isMafiaTeamRole,
+  maskGameStateForPlayer,
   usesMafiaKillVoting,
   advanceSpeaker,
 } from '@/lib/game-logic'
+
+function actionOk(state: GameState, playerId: string, extra?: Record<string, unknown>) {
+  return NextResponse.json({
+    success: true,
+    state: maskGameStateForPlayer(state, playerId),
+    ...extra,
+  })
+}
 
 // POST /api/game/action — нічна дія або денне голосування
 export async function POST(req: Request) {
@@ -38,7 +47,7 @@ export async function POST(req: Request) {
       state.forceEndRequestedBy = null
       state.lastEvent = 'Ведучий завершив гру за запитом з лобі.'
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     if (action === 'reject_force_end') {
@@ -46,14 +55,14 @@ export async function POST(req: Request) {
       state.forceEndRequested = false
       state.forceEndRequestedBy = null
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     // ─── Обробка дій паузи (Мета-дії, працюють навіть для мертвих/хостів) ───
     if (action === 'request_pause') {
       state.pauseRequestedBy = actor.name
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     if (action === 'confirm_pause') {
@@ -61,14 +70,14 @@ export async function POST(req: Request) {
       state.isPaused = true
       state.pauseRequestedBy = null
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     if (action === 'reject_pause') {
       if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
       state.pauseRequestedBy = null
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     if (action === 'resume_game') {
@@ -76,7 +85,7 @@ export async function POST(req: Request) {
       state.isPaused = false
       state.pauseRequestedBy = null
       await setGameState(state)
-      return NextResponse.json({ success: true, state })
+      return actionOk(state, playerId)
     }
 
     // Звичайні ігрові дії вимагають, щоб гравець був живий (крім переходу фаз ведучим)
@@ -118,16 +127,23 @@ export async function POST(req: Request) {
           break
         case 'don_investigate':
           if (actor.role !== 'don') return NextResponse.json({ error: 'Тільки дон' }, { status: 403 })
-          if (!isMafiaKillVotingComplete(state)) {
+          if (state.nightDonInvestigated !== null) {
+            return NextResponse.json({ error: 'Дон вже зробив перевірку цієї ночі' }, { status: 400 })
+          }
+          if (usesMafiaKillVoting(state) && !isMafiaKillVotingComplete(state)) {
             return NextResponse.json({ error: 'Спочатку мафія повинна завершити голосування за вбивство' }, { status: 400 })
           }
-          state.nightDonInvestigated = targetId
-          if (targetId) {
+          if (!targetId) {
+            return NextResponse.json({ error: 'Оберіть гравця для перевірки' }, { status: 400 })
+          }
+          {
             const target = state.players.find(p => p.id === targetId)
-            if (target) {
-              if (!state.donChecks) state.donChecks = {}
-              state.donChecks[targetId] = target.role === 'sheriff' ? 'sheriff' : 'not_sheriff'
+            if (!target || !target.isAlive) {
+              return NextResponse.json({ error: 'Не можна перевірити цього гравця' }, { status: 400 })
             }
+            state.nightDonInvestigated = targetId
+            if (!state.donChecks) state.donChecks = {}
+            state.donChecks[targetId] = target.role === 'sheriff' ? 'sheriff' : 'not_sheriff'
           }
           break
         case 'heal':
@@ -136,7 +152,21 @@ export async function POST(req: Request) {
           break
         case 'investigate':
           if (actor.role !== 'sheriff') return NextResponse.json({ error: 'Не шериф' }, { status: 403 })
-          state.nightInvestigated = targetId
+          if (state.nightInvestigated !== null) {
+            return NextResponse.json({ error: 'Шериф вже зробив перевірку цієї ночі' }, { status: 400 })
+          }
+          if (!targetId) {
+            return NextResponse.json({ error: 'Оберіть гравця для перевірки' }, { status: 400 })
+          }
+          {
+            const target = state.players.find(p => p.id === targetId)
+            if (!target || !target.isAlive) {
+              return NextResponse.json({ error: 'Не можна перевірити цього гравця' }, { status: 400 })
+            }
+            state.nightInvestigated = targetId
+            if (!state.sheriffChecks) state.sheriffChecks = {}
+            state.sheriffChecks[targetId] = target.role === 'mafia' ? 'mafia' : 'town'
+          }
           break
         case 'block':
           if (actor.role !== 'prostitute') return NextResponse.json({ error: 'Не повія' }, { status: 403 })
@@ -155,7 +185,7 @@ export async function POST(req: Request) {
               return NextResponse.json({ error: 'Зачекайте завершення нічної фази...' }, { status: 400 })
             }
 
-            return resolveNight(state)
+            return resolveNight(state, playerId)
           }
         default:
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
@@ -338,24 +368,24 @@ export async function POST(req: Request) {
         // Хост завершує день
         if (state.votingPhase === 'voting' || state.votingPhase === 'revote') {
           // Підраховуємо голоси за номінованих та вирішуємо результат
-          return resolveNominationVoting(state)
+          return resolveNominationVoting(state, playerId)
         }
         if (state.activeSpeakerId !== null || state.votingPhase === 'defense') {
           return NextResponse.json({ error: 'Не можна завершити день поки триває круг виступів або захист' }, { status: 400 })
         }
-        return resolveDay(state)
+        return resolveDay(state, playerId)
       }
     }
 
     await setGameState(state)
-    return NextResponse.json({ success: true, state })
+    return actionOk(state, playerId)
   } catch (err) {
     console.error('POST /api/game/action error:', err)
     return NextResponse.json({ error: 'Помилка сервера' }, { status: 500 })
   }
 }
 
-async function resolveNight(state: GameState): Promise<NextResponse> {
+async function resolveNight(state: GameState, playerId: string): Promise<NextResponse> {
   let event = ''
 
   const { nightTarget, nightProtected, nightBlocked } = state
@@ -432,11 +462,11 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   }
 
   await setGameState(state)
-  return NextResponse.json({ success: true, state, event })
+  return actionOk(state, playerId, { event })
 }
 
 // Підрахунок голосів за номінованих гравців та вирішення результату
-async function resolveNominationVoting(state: GameState): Promise<NextResponse> {
+async function resolveNominationVoting(state: GameState, playerId: string): Promise<NextResponse> {
   const votes = state.nominationVotes ?? {}
   const tally: Record<string, number> = {}
 
@@ -469,7 +499,7 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
 
   if (maxVotes === 0) {
     // Ніхто не голосував → нічию не вирішуємо, переходимо до ночі
-    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog)
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog, playerId)
   }
 
   // Знаходимо всіх з максимальною кількістю голосів
@@ -482,15 +512,15 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
     const victim = state.players.find(p => p.id === topPlayers[0])
     if (victim) {
       victim.isAlive = false
-      return transitionToNight(state, `Місто виключило ${victim.name}!` + voteLog)
+      return transitionToNight(state, `Місто виключило ${victim.name}!` + voteLog, playerId)
     }
-    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog)
+    return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog, playerId)
   }
 
   // Нічия! Перевіряємо чи це вже ревот
   if (state.votingPhase === 'revote') {
     // Після ревота — нікого не виключають
-    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.' + voteLog)
+    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.' + voteLog, playerId)
   }
 
   // Перша нічия → захисні промови
@@ -509,11 +539,11 @@ async function resolveNominationVoting(state: GameState): Promise<NextResponse> 
   state.lastEvent = `Нічия між ${tiedNames}! Захисні промови.` + voteLog
 
   await setGameState(state)
-  return NextResponse.json({ success: true, state })
+  return actionOk(state, playerId)
 }
 
 // Перехід до нічної фази
-async function transitionToNight(state: GameState, event: string): Promise<NextResponse> {
+async function transitionToNight(state: GameState, event: string, playerId: string): Promise<NextResponse> {
   state.lastEvent = event
   state.votes = {}
   state.phase = 'night'
@@ -548,10 +578,10 @@ async function transitionToNight(state: GameState, event: string): Promise<NextR
   }
 
   await setGameState(state)
-  return NextResponse.json({ success: true, state, event })
+  return actionOk(state, playerId, { event })
 }
 
-async function resolveDay(state: GameState): Promise<NextResponse> {
+async function resolveDay(state: GameState, playerId: string): Promise<NextResponse> {
   // Підрахунок голосів
   const tally: Record<string, number> = {}
   for (const targetId of Object.values(state.votes)) {
@@ -580,7 +610,7 @@ async function resolveDay(state: GameState): Promise<NextResponse> {
     event = 'Місто не дійшло згоди — нікого не виключено.'
   }
 
-  return transitionToNight(state, event)
+  return transitionToNight(state, event, playerId)
 }
 
 // Просування захисних промов
