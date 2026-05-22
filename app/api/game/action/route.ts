@@ -165,7 +165,7 @@ export async function POST(req: Request) {
             }
             state.nightInvestigated = targetId
             if (!state.sheriffChecks) state.sheriffChecks = {}
-            state.sheriffChecks[targetId] = target.role === 'mafia' ? 'mafia' : 'town'
+            state.sheriffChecks[targetId] = isMafiaTeamRole(target.role) ? 'mafia' : 'town'
           }
           break
         case 'block':
@@ -414,17 +414,15 @@ async function resolveNight(state: GameState, playerId: string): Promise<NextRes
     event = 'Тиха ніч — ніхто не загинув.'
   }
 
-  // Результат перевірки шерифа — зберігаємо у lastEvent на стороні клієнта гравця та записуємо в історію sheriffChecks
+  // Результат перевірки шерифа — записуємо в історію sheriffChecks
   if (state.nightInvestigated) {
     const target = state.players.find(p => p.id === state.nightInvestigated)
     if (target) {
       if (!state.sheriffChecks) state.sheriffChecks = {}
-      state.sheriffChecks[state.nightInvestigated] = target.role === 'mafia' ? 'mafia' : 'town'
-      state.lastEvent = event + ` [Шериф: ${target.name} — ${target.role === 'mafia' ? 'МАФІЯ' : 'МИРНИЙ'}]`
+      state.sheriffChecks[state.nightInvestigated] = isMafiaTeamRole(target.role) ? 'mafia' : 'town'
     }
-  } else {
-    state.lastEvent = event
   }
+  state.lastEvent = event
 
   state.killedLastNight = killed
   state.phase = 'day'

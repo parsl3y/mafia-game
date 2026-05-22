@@ -147,10 +147,7 @@ export function maskGameStateForPlayer(state: GameState, playerId: string | null
         : null,
   }))
 
-  let maskedLastEvent = state.lastEvent
-  if (maskedLastEvent && !isSheriff) {
-    maskedLastEvent = maskedLastEvent.replace(/\s*\[Шериф:.*?\]/, '')
-  }
+  const maskedLastEvent = state.lastEvent
 
   const nowTime = Date.now()
   const revealTime = state.nightRevealTime
