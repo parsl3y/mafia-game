@@ -167,6 +167,7 @@ export function finishSpeakerTurn(state: GameState): void {
   } else {
     state.votingPhase = 'nominating'
   }
+  state.speakerTimerStartedAt = null
 }
 
 export function advanceSpeaker(state: GameState): void {

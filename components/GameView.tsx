@@ -238,6 +238,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const callsRef = useRef<any[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const volumeAnalyserRef = useRef<any>(null)
+  const lastSeenEventRef = useRef<string | null>(null)
 
   const showNotif = (msg: string) => {
     setNotification(msg)
@@ -261,9 +262,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     setPhaseAdvanced(false)
     setInvestigateResult(null)
     setForceLocalMute(false)
-    if (game.lastEvent) showNotif(game.lastEvent)
+    if (game.lastEvent && game.lastEvent !== lastSeenEventRef.current) {
+      showNotif(game.lastEvent)
+      lastSeenEventRef.current = game.lastEvent
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId])
+  }, [game?.phase, game?.votingPhase, game?.day, game?.activeSpeakerId, game?.defensePlayerId, game?.lastEvent])
 
   // Скидаємо actionDone при зміні фази / після завершення нічної дії
   useEffect(() => {

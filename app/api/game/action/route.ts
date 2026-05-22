@@ -88,8 +88,9 @@ export async function POST(req: Request) {
       return actionOk(state, playerId)
     }
 
-    // Звичайні ігрові дії вимагають, щоб гравець був живий (крім переходу фаз ведучим)
-    if (!actor.isAlive && action !== 'next_phase') {
+    // Звичайні ігрові дії вимагають, щоб гравець був живий (крім переходу фаз ведучим або коли гравець мертвий, але зараз його черга останнього слова)
+    const isSpeakingLastWords = state.votingPhase === 'last_words' && state.activeSpeakerId === playerId
+    if (!actor.isAlive && action !== 'next_phase' && !isSpeakingLastWords) {
       return NextResponse.json({ error: 'Гравець мертвий' }, { status: 400 })
     }
 
@@ -198,7 +199,7 @@ export async function POST(req: Request) {
     } else if (state.phase === 'day') {
       // ─── Speech phase actions ───
       if (action === 'start_speech') {
-        if (state.votingPhase !== 'speeches') {
+        if (state.votingPhase !== 'speeches' && state.votingPhase !== 'last_words') {
           return NextResponse.json({ error: 'Зараз не фаза виступів' }, { status: 400 })
         }
         if (playerId !== state.activeSpeakerId) {
