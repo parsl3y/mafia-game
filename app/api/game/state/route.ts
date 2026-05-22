@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
 import { getGameState, setGameState } from '@/lib/redis'
-
+import {
+  areAllNightMovesComplete,
+  canNominate,
+  checkWinner,
+  finishSpeakerTurn,
+  isMafiaTeamRole,
+} from '@/lib/game-logic'
+import { advanceDefense } from '../action/route'
 
 export const dynamic = 'force-dynamic'
 
 // GET /api/game/state — повертає повний стан гри
-// Ролі інших гравців приховані (крім власної)
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -16,27 +22,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
-    // Очищення офлайн гравців у грі (> 1.5 хв)
     const now = Date.now()
     const GAME_TIMEOUT_MS = 90 * 1000
     let stateChanged = false
 
-
     if (!state.isPaused) {
-      // Автоматичне просування активного спікера, якщо час виступу минув (60 секунд)
       if (
         state.phase === 'day' &&
         state.activeSpeakerId &&
         state.speakerTimerStartedAt &&
         now - state.speakerTimerStartedAt >= 60_000
       ) {
-        // Після виступу → фаза номінації
-        state.votingPhase = 'nominating'
-        state.speakerTimerStartedAt = null
+        finishSpeakerTurn(state)
         stateChanged = true
       }
 
-      // Автоматичне просування захисної промови (30 секунд)
       if (
         state.phase === 'day' &&
         state.votingPhase === 'defense' &&
@@ -44,14 +44,11 @@ export async function GET(req: Request) {
         state.defenseTimerStartedAt &&
         now - state.defenseTimerStartedAt >= 30_000
       ) {
-        const { advanceDefense } = require('../action/route')
         advanceDefense(state)
         stateChanged = true
       }
 
-
       state.players = state.players.map(p => {
-        // Якщо гравець живий, але не надсилав heartbeat більше 1.5 хвилин
         if (p.isAlive && (now - (p.lastSeen ?? now)) >= GAME_TIMEOUT_MS) {
           p.isAlive = false
           stateChanged = true
@@ -60,14 +57,7 @@ export async function GET(req: Request) {
       })
 
       if (stateChanged) {
-        const alive = state.players.filter(p => p.isAlive)
-        const mafiaAlive = alive.filter(p => p.role === 'mafia').length
-        const townAlive = alive.filter(p => p.role !== 'mafia').length
-
-        let winner: 'mafia' | 'town' | null = null
-        if (mafiaAlive === 0) winner = 'town'
-        else if (mafiaAlive >= townAlive) winner = 'mafia'
-
+        const winner = checkWinner(state)
         if (winner) {
           state.winner = winner
           state.phase = 'ended'
@@ -79,66 +69,56 @@ export async function GET(req: Request) {
       }
     }
 
-    // Перевіряємо чи всі активні ролі зробили свій хід вночі
     if (state.phase === 'night') {
-      const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
-      const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
-      const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
-      const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
-
-      const allMovesMade = 
-        (!mafiaAlive || state.nightTarget !== null) &&
-        (!sheriffAlive || state.nightInvestigated !== null) &&
-        (!doctorAlive || state.nightProtected !== null) &&
-        (!prostituteAlive || state.nightBlocked !== null)
-
-      if (allMovesMade && !state.nightRevealTime) {
-        const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс (5-15 секунд)
+      const movesComplete = areAllNightMovesComplete(state)
+      if (movesComplete && !state.nightRevealTime) {
+        const delay = Math.floor(Math.random() * 10000) + 5000
         state.nightRevealTime = Date.now() + delay
         await setGameState(state)
       }
     }
 
-    // Знаходимо поточного гравця
     const me = state.players.find(p => p.id === playerId)
 
-    // Маскуємо ролі: мафія бачить інших мафіозі, решта — лише свою роль
     const maskedPlayers = state.players.map(p => {
       const showRole =
         p.id === playerId ||
-        (me?.role === 'mafia' && p.role === 'mafia') // мафія знає своїх
+        (isMafiaTeamRole(me?.role ?? null) && isMafiaTeamRole(p.role))
       return {
         ...p,
         role: showRole ? p.role : null,
       }
     })
 
-    // Розраховуємо статус ходів нічних ролей із синхронізованою затримкою
     const nowTime = Date.now()
     const revealTime = state.nightRevealTime
-    const lampsRevealed = revealTime ? (nowTime >= revealTime) : false
+    const lampsRevealed = revealTime ? nowTime >= revealTime : false
+    const nightMovesComplete = areAllNightMovesComplete(state)
 
-    const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
+    const mafiaAlive = state.players.some(p => isMafiaTeamRole(p.role) && p.isAlive)
     const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
     const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
     const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
+    const donAlive = state.players.some(p => p.role === 'don' && p.isAlive)
 
     const nightActionsStatus = {
-      mafia: { required: mafiaAlive, done: lampsRevealed },
-      sheriff: { required: sheriffAlive, done: lampsRevealed },
-      doctor: { required: doctorAlive, done: lampsRevealed },
-      prostitute: { required: prostituteAlive, done: lampsRevealed },
+      mafia: { required: mafiaAlive, done: nightMovesComplete && lampsRevealed },
+      sheriff: { required: sheriffAlive, done: nightMovesComplete && lampsRevealed },
+      doctor: { required: doctorAlive, done: nightMovesComplete && lampsRevealed },
+      prostitute: { required: prostituteAlive, done: nightMovesComplete && lampsRevealed },
+      don: { required: donAlive, done: nightMovesComplete && lampsRevealed },
     }
 
-    // Для звичайних гравців (не хоста) ховаємо конкретні вибори, залишаючи лише статус ходу
     const isHost = me?.isHost ?? false
     const isSheriff = me?.role === 'sheriff'
+    const isDon = me?.role === 'don'
 
-    // Маскуємо lastEvent: прибираємо інформацію про перевірку шерифа для мирних і мафії
     let maskedLastEvent = state.lastEvent
     if (maskedLastEvent && !isHost && !isSheriff) {
       maskedLastEvent = maskedLastEvent.replace(/\s*\[Шериф:.*?\]/, '')
     }
+
+    const canEndNight = nightMovesComplete && lampsRevealed
 
     const responsePayload = {
       ...state,
@@ -146,12 +126,18 @@ export async function GET(req: Request) {
       myRole: me?.role ?? null,
       nightActionsStatus,
       lampsRevealed,
+      nightMovesComplete,
+      canEndNight,
+      allowNominations: canNominate(state),
       lastEvent: maskedLastEvent,
       nightTarget: isHost ? state.nightTarget : null,
       nightProtected: isHost ? state.nightProtected : null,
       nightBlocked: isHost ? state.nightBlocked : null,
       nightInvestigated: isHost ? state.nightInvestigated : null,
       sheriffChecks: (isHost || isSheriff) ? (state.sheriffChecks ?? {}) : null,
+      donChecks: (isHost || isDon) ? (state.donChecks ?? {}) : null,
+      mafiaKillVotes:
+        isHost || isMafiaTeamRole(me?.role ?? null) ? (state.mafiaKillVotes ?? {}) : null,
     }
 
     return NextResponse.json(responsePayload)

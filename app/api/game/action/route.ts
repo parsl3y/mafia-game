@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getGameState, setGameState, type GameState } from '@/lib/redis'
-
-// Перевірка переможця
-function checkWinner(state: GameState): 'mafia' | 'town' | null {
-  const alive = state.players.filter(p => p.isAlive)
-  const mafiaAlive = alive.filter(p => p.role === 'mafia').length
-  const townAlive = alive.filter(p => p.role !== 'mafia').length
-
-  if (mafiaAlive === 0) return 'town'
-  if (mafiaAlive >= townAlive) return 'mafia'
-  return null
-}
+import {
+  areAllNightMovesComplete,
+  applyMafiaKillResolution,
+  canNominate,
+  checkWinner,
+  finishSpeakerTurn,
+  isMafiaKillVotingComplete,
+  isMafiaTeamRole,
+  usesMafiaKillVoting,
+  advanceSpeaker,
+} from '@/lib/game-logic'
 
 // POST /api/game/action — нічна дія або денне голосування
 export async function POST(req: Request) {
@@ -94,8 +94,41 @@ export async function POST(req: Request) {
       // Нічні дії
       switch (action) {
         case 'kill':
-          if (actor.role !== 'mafia') return NextResponse.json({ error: 'Не мафія' }, { status: 403 })
+          if (!isMafiaTeamRole(actor.role) || actor.role === 'don') {
+            return NextResponse.json({ error: 'Не мафія' }, { status: 403 })
+          }
+          if (usesMafiaKillVoting(state)) {
+            return NextResponse.json({ error: 'Голосуйте разом з мафією' }, { status: 400 })
+          }
           state.nightTarget = targetId
+          if (!state.mafiaKillVotes) state.mafiaKillVotes = {}
+          state.mafiaKillVotes[playerId] = targetId
+          break
+        case 'mafia_vote':
+          if (!isMafiaTeamRole(actor.role)) {
+            return NextResponse.json({ error: 'Тільки мафія може голосувати' }, { status: 403 })
+          }
+          if (!usesMafiaKillVoting(state)) {
+            return NextResponse.json({ error: 'Використовуйте звичайне вбивство' }, { status: 400 })
+          }
+          if (!targetId) return NextResponse.json({ error: 'Оберіть ціль' }, { status: 400 })
+          if (!state.mafiaKillVotes) state.mafiaKillVotes = {}
+          state.mafiaKillVotes[playerId] = targetId
+          applyMafiaKillResolution(state)
+          break
+        case 'don_investigate':
+          if (actor.role !== 'don') return NextResponse.json({ error: 'Тільки дон' }, { status: 403 })
+          if (!isMafiaKillVotingComplete(state)) {
+            return NextResponse.json({ error: 'Спочатку мафія повинна завершити голосування за вбивство' }, { status: 400 })
+          }
+          state.nightDonInvestigated = targetId
+          if (targetId) {
+            const target = state.players.find(p => p.id === targetId)
+            if (target) {
+              if (!state.donChecks) state.donChecks = {}
+              state.donChecks[targetId] = target.role === 'sheriff' ? 'sheriff' : 'not_sheriff'
+            }
+          }
           break
         case 'heal':
           if (actor.role !== 'doctor') return NextResponse.json({ error: 'Не лікар' }, { status: 403 })
@@ -115,31 +148,21 @@ export async function POST(req: Request) {
             const revealTime = state.nightRevealTime
             const lampsRevealed = revealTime ? (nowTime >= revealTime) : false
 
-            if (!lampsRevealed) {
+            if (!areAllNightMovesComplete(state)) {
               return NextResponse.json({ error: 'Нічні ролі ще роблять свої ходи...' }, { status: 400 })
             }
+            if (!lampsRevealed) {
+              return NextResponse.json({ error: 'Зачекайте завершення нічної фази...' }, { status: 400 })
+            }
 
-            // Обчислюємо результати ночі
             return resolveNight(state)
           }
         default:
           return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
       }
 
-      // Перевіряємо чи всі активні ролі зробили свій хід
-      const mafiaAlive = state.players.some(p => p.role === 'mafia' && p.isAlive)
-      const sheriffAlive = state.players.some(p => p.role === 'sheriff' && p.isAlive)
-      const doctorAlive = state.players.some(p => p.role === 'doctor' && p.isAlive)
-      const prostituteAlive = state.players.some(p => p.role === 'prostitute' && p.isAlive)
-
-      const allMovesMade = 
-        (!mafiaAlive || state.nightTarget !== null) &&
-        (!sheriffAlive || state.nightInvestigated !== null) &&
-        (!doctorAlive || state.nightProtected !== null) &&
-        (!prostituteAlive || state.nightBlocked !== null)
-
-      if (allMovesMade && !state.nightRevealTime) {
-        const delay = Math.floor(Math.random() * 10000) + 5000 // 5000-15000 мс (5-15 секунд)
+      if (areAllNightMovesComplete(state) && !state.nightRevealTime) {
+        const delay = Math.floor(Math.random() * 10000) + 5000
         state.nightRevealTime = Date.now() + delay
       }
     } else if (state.phase === 'day') {
@@ -157,31 +180,40 @@ export async function POST(req: Request) {
         if (playerId !== state.activeSpeakerId) {
           return NextResponse.json({ error: 'Зараз не ваша черга виступати' }, { status: 400 })
         }
-        // Після виступу → переходимо в фазу номінації для цього спікера
-        state.votingPhase = 'nominating'
-        state.speakerTimerStartedAt = null
+        finishSpeakerTurn(state)
 
       } else if (action === 'force_skip_speaker') {
         if (!actor.isHost) return NextResponse.json({ error: 'Не хост' }, { status: 403 })
         if (!state.activeSpeakerId) return NextResponse.json({ error: 'Немає активного спікера' }, { status: 400 })
-        
-        // Ведучий примусово завершує виступ/номінацію
-        advanceSpeaker(state)
-        if (state.activeSpeakerId) {
-          state.votingPhase = 'speeches'
-        } else {
-          if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
+
+        if (state.votingPhase === 'nominating') {
+          advanceSpeaker(state)
+          if (state.activeSpeakerId) {
+            state.votingPhase = 'speeches'
+          } else if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
             state.votingPhase = 'voting'
             state.nominationVotes = {}
           } else {
             state.votingPhase = null
           }
+        } else {
+          finishSpeakerTurn(state)
+          if (!state.activeSpeakerId) {
+            if (state.nominatedPlayers && state.nominatedPlayers.length > 0) {
+              state.votingPhase = 'voting'
+              state.nominationVotes = {}
+            } else {
+              state.votingPhase = null
+            }
+          }
         }
 
 
-      // ─── Nomination actions ───
+        // ─── Nomination actions ───
       } else if (action === 'nominate') {
-        // Гравець номінує когось після свого виступу
+        if (!canNominate(state)) {
+          return NextResponse.json({ error: 'У перший день номінації заборонені' }, { status: 400 })
+        }
         if (state.votingPhase !== 'nominating') {
           return NextResponse.json({ error: 'Зараз не фаза номінації' }, { status: 400 })
         }
@@ -250,7 +282,7 @@ export async function POST(req: Request) {
           }
         }
 
-      // ─── Voting on nominated players ───
+        // ─── Voting on nominated players ───
       } else if (action === 'nomination_vote') {
         if (state.votingPhase !== 'voting' && state.votingPhase !== 'revote') {
           return NextResponse.json({ error: 'Зараз не фаза голосування' }, { status: 400 })
@@ -270,7 +302,7 @@ export async function POST(req: Request) {
         if (!state.nominationVotes) state.nominationVotes = {}
         state.nominationVotes[playerId] = targetId
 
-      // ─── Defense speech actions ───
+        // ─── Defense speech actions ───
       } else if (action === 'start_defense') {
         if (state.votingPhase !== 'defense') {
           return NextResponse.json({ error: 'Зараз не фаза захисту' }, { status: 400 })
@@ -294,7 +326,7 @@ export async function POST(req: Request) {
         if (state.votingPhase !== 'defense') return NextResponse.json({ error: 'Зараз не фаза захисту' }, { status: 400 })
         advanceDefense(state)
 
-      // ─── Host resolves voting ───
+        // ─── Host resolves voting ───
       } else if (action === 'vote') {
         // Legacy vote — пряме голосування (використовується як fallback)
         if (state.activeSpeakerId !== null) {
@@ -329,7 +361,8 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   const { nightTarget, nightProtected, nightBlocked } = state
 
   // Повія блокує мафію якщо вибрала мафіозі
-  const mafiaBlocked = nightBlocked && state.players.find(p => p.id === nightBlocked)?.role === 'mafia'
+  const blockedRole = nightBlocked ? state.players.find(p => p.id === nightBlocked)?.role : null
+  const mafiaBlocked = nightBlocked && isMafiaTeamRole(blockedRole)
 
   let killed: string | null = null
 
@@ -370,6 +403,8 @@ async function resolveNight(state: GameState): Promise<NextResponse> {
   state.nightProtected = null
   state.nightBlocked = null
   state.nightInvestigated = null
+  state.nightDonInvestigated = null
+  state.mafiaKillVotes = {}
 
   // Ініціалізація виступів на день
   state.speakersDone = []
@@ -485,6 +520,8 @@ async function transitionToNight(state: GameState, event: string): Promise<NextR
   state.day += 1
   state.nightStartedAt = Date.now()
   state.nightRevealTime = null
+  state.nightDonInvestigated = null
+  state.mafiaKillVotes = {}
   state.fakeDelays = {
     mafia: Math.floor(Math.random() * 4000) + 1000,
     sheriff: Math.floor(Math.random() * 4000) + 1000,
@@ -546,28 +583,6 @@ async function resolveDay(state: GameState): Promise<NextResponse> {
   return transitionToNight(state, event)
 }
 
-export function advanceSpeaker(state: GameState) {
-  if (!state.activeSpeakerId) return
-
-  if (!state.speakersDone) state.speakersDone = []
-  if (!state.speakersDone.includes(state.activeSpeakerId)) {
-    state.speakersDone.push(state.activeSpeakerId)
-  }
-
-  const aliveSorted = [...state.players]
-    .filter(p => p.isAlive)
-    .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
-
-  const nextSpeaker = aliveSorted.find(p => !state.speakersDone?.includes(p.id))
-  if (nextSpeaker) {
-    state.activeSpeakerId = nextSpeaker.id
-    state.speakerTimerStartedAt = null
-  } else {
-    state.activeSpeakerId = null
-    state.speakerTimerStartedAt = null
-  }
-}
-
 // Просування захисних промов
 export function advanceDefense(state: GameState) {
   if (!state.defensePlayerId) return
@@ -579,7 +594,7 @@ export function advanceDefense(state: GameState) {
 
   const defenseOrder = state.defenseOrder ?? []
   const nextDefender = defenseOrder.find(id => !state.defensesDone?.includes(id))
-  
+
   if (nextDefender) {
     state.defensePlayerId = nextDefender
     state.defenseTimerStartedAt = null

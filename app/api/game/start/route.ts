@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     const { hostId } = body
 
     const lobbyPlayers = await getLobbyPlayers()
-    const settings     = await getGameSettings()
+    const settings = await getGameSettings()
 
     // Перевірки доступу
     if (!lobbyPlayers.some(p => p.id === hostId && p.isHost)) {
@@ -41,11 +41,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Максимум 10 гравців' }, { status: 400 })
     }
 
-    // Будуємо список ролей на основі налаштувань
+    // Будуємо список ролей: при 2+ мафії один стає Доном
     const roles: Role[] = []
-    for (let i = 0; i < settings.mafiaCount; i++) roles.push('mafia')
+    if (settings.mafiaCount > 1) {
+      roles.push('don')
+      for (let i = 0; i < settings.mafiaCount - 1; i++) roles.push('mafia')
+    } else if (settings.mafiaCount === 1) {
+      roles.push('mafia')
+    }
     roles.push('sheriff')
-    if (settings.hasDoctor)     roles.push('doctor')
+    if (settings.hasDoctor) roles.push('doctor')
     if (settings.hasProstitute) roles.push('prostitute')
 
     // Решта — громадяни (мінімум 1)
@@ -57,7 +62,7 @@ export async function POST(req: Request) {
     }
     for (let i = 0; i < civiliansNeeded; i++) roles.push('civilian')
 
-    const shuffledRoles   = shuffle(roles)
+    const shuffledRoles = shuffle(roles)
     const shuffledPlayers = shuffle(lobbyPlayers)
 
     const players: Player[] = shuffledPlayers.map((p, i) => ({
@@ -68,9 +73,10 @@ export async function POST(req: Request) {
     }))
 
     const parts = []
-    if (settings.mafiaCount > 0) parts.push(`${settings.mafiaCount} мафія`)
+    if (settings.mafiaCount > 1) parts.push(`1 дон + ${settings.mafiaCount - 1} мафія`)
+    else if (settings.mafiaCount === 1) parts.push('1 мафія')
     parts.push('шериф')
-    if (settings.hasDoctor)     parts.push('лікар')
+    if (settings.hasDoctor) parts.push('лікар')
     if (settings.hasProstitute) parts.push('повія')
     parts.push(`${civiliansNeeded} громадянин(ів)`)
 
@@ -79,32 +85,35 @@ export async function POST(req: Request) {
       .sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
 
     const state: GameState = {
-      id:                `game-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      phase:             'day',
-      day:               1,
+      id: `game-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      phase: 'day',
+      day: 1,
       players,
-      nightTarget:       null,
-      nightProtected:    null,
-      nightBlocked:      null,
+      nightTarget: null,
+      nightProtected: null,
+      nightBlocked: null,
       nightInvestigated: null,
-      votes:             {},
-      killedLastNight:   null,
-      winner:            null,
-      lastEvent:         `Гра розпочата! Склад: ${parts.join(', ')}. Починається день 1 — знайдіть мафію!`,
-      isPaused:          false,
-      pauseRequestedBy:  null,
-      speakersDone:      [],
-      activeSpeakerId:   aliveSorted.length > 0 ? aliveSorted[0].id : null,
+      nightDonInvestigated: null,
+      mafiaKillVotes: {},
+      donChecks: {},
+      votes: {},
+      killedLastNight: null,
+      winner: null,
+      lastEvent: `Гра розпочата! Склад: ${parts.join(', ')}. Починається день 1 — знайдіть мафію!`,
+      isPaused: false,
+      pauseRequestedBy: null,
+      speakersDone: [],
+      activeSpeakerId: aliveSorted.length > 0 ? aliveSorted[0].id : null,
       speakerTimerStartedAt: null,
       // Nomination & voting system
-      votingPhase:       'speeches',
-      nominations:       {},
-      nominatedPlayers:  [],
-      nominationVotes:   {},
-      defensePlayerId:   null,
+      votingPhase: 'speeches',
+      nominations: {},
+      nominatedPlayers: [],
+      nominationVotes: {},
+      defensePlayerId: null,
       defenseTimerStartedAt: null,
-      defenseOrder:      [],
-      defensesDone:      [],
+      defenseOrder: [],
+      defensesDone: [],
     }
 
 
