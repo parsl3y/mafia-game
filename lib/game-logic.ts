@@ -94,15 +94,79 @@ export function checkWinner(state: GameState): 'mafia' | 'town' | null {
   return null
 }
 
+export function setTransitionToNightState(state: GameState, event: string): void {
+  state.lastEvent = event
+  state.votes = {}
+  state.phase = 'night'
+  state.day += 1
+  state.nightStartedAt = Date.now()
+  state.nightRevealTime = null
+  state.nightDonInvestigated = null
+  state.mafiaKillVotes = {}
+  state.fakeDelays = {
+    mafia: Math.floor(Math.random() * 4000) + 1000,
+    sheriff: Math.floor(Math.random() * 4000) + 1000,
+    doctor: Math.floor(Math.random() * 4000) + 1000,
+    prostitute: Math.floor(Math.random() * 4000) + 1000,
+  }
+
+  // Очищаємо номінаційні поля
+  state.votingPhase = null
+  state.nominations = {}
+  state.nominatedPlayers = []
+  state.nominationVotes = {}
+  state.defensePlayerId = null
+  state.defenseTimerStartedAt = null
+  state.defenseOrder = []
+  state.defensesDone = []
+  state.activeSpeakerId = null
+  state.speakerTimerStartedAt = null
+
+  const winner = checkWinner(state)
+  if (winner) {
+    state.winner = winner
+    state.phase = 'ended'
+  }
+}
+
 /** Після виступу: день 1 — без номінацій */
 export function finishSpeakerTurn(state: GameState): void {
-  if (state.day === 1) {
+  if (state.votingPhase === 'last_words') {
+    const reason = state.lastWordReason
+    // Clear last words state
+    state.activeSpeakerId = null
+    state.speakerTimerStartedAt = null
+    state.votingPhase = null
+    state.lastWordPlayerId = null
+    state.lastWordReason = null
+
+    if (reason === 'killed_night') {
+      // Start standard speeches
+      state.votingPhase = 'speeches'
+      state.speakersDone = []
+      const totalPlayers = state.players.length || 1
+      const idealStartSlot = ((state.day - 1) % totalPlayers) + 1
+      const aliveSorted = [...state.players]
+        .filter(p => p.isAlive)
+        .sort((a, b) => {
+          const slotA = a.slotNumber ?? 0
+          const slotB = b.slotNumber ?? 0
+          const relA = (slotA - idealStartSlot + totalPlayers) % totalPlayers
+          const relB = (slotB - idealStartSlot + totalPlayers) % totalPlayers
+          return relA - relB
+        })
+      state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
+      state.speakerTimerStartedAt = null
+    } else {
+      // Reason was 'voted_out', transition to night!
+      setTransitionToNightState(state, state.lastEvent || 'Останнє слово завершено. Починається ніч.')
+    }
+  } else if (state.day === 1) {
     advanceSpeaker(state)
     state.votingPhase = state.activeSpeakerId ? 'speeches' : null
   } else {
     state.votingPhase = 'nominating'
   }
-  state.speakerTimerStartedAt = null
 }
 
 export function advanceSpeaker(state: GameState): void {

@@ -399,23 +399,18 @@ async function resolveNight(state: GameState, playerId: string): Promise<NextRes
   const mafiaBlocked = nightBlocked && isMafiaTeamRole(blockedRole)
 
   let killed: string | null = null
+  const victim = nightTarget && !mafiaBlocked && nightTarget !== nightProtected
+    ? state.players.find(p => p.id === nightTarget)
+    : null
 
-  if (nightTarget && !mafiaBlocked) {
-    if (nightTarget !== nightProtected) {
-      // Вбивство відбулось
-      const victim = state.players.find(p => p.id === nightTarget)
-      if (victim) {
-        victim.isAlive = false
-        killed = victim.name
-        event = `Вночі загинув ${victim.name}!`
-      }
-    } else {
-      event = 'Вночі лікар врятував гравця!'
-    }
+  if (victim) {
+    victim.isAlive = false
+    killed = victim.name
+    event = `Вночі загинув ${victim.name}!`
   } else if (mafiaBlocked) {
     event = 'Повія заблокувала мафію — вночі ніхто не загинув!'
   } else {
-    event = 'Тиха ніч — ніхто не загинув.'
+    event = nightTarget && nightTarget === nightProtected ? 'Вночі лікар врятував гравця!' : 'Тиха ніч — ніхто не загинув.'
   }
 
   // Результат перевірки шерифа — записуємо в історію sheriffChecks
@@ -451,11 +446,20 @@ async function resolveNight(state: GameState, playerId: string): Promise<NextRes
       const relB = (slotB - idealStartSlot + totalPlayers) % totalPlayers
       return relA - relB
     })
-  state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
-  state.speakerTimerStartedAt = null
+
+  if (victim) {
+    state.votingPhase = 'last_words'
+    state.activeSpeakerId = victim.id
+    state.speakerTimerStartedAt = null
+    state.lastWordPlayerId = victim.id
+    state.lastWordReason = 'killed_night'
+  } else {
+    state.votingPhase = 'speeches'
+    state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
+    state.speakerTimerStartedAt = null
+  }
 
   // Ініціалізація системи номінацій
-  state.votingPhase = 'speeches'
   state.nominations = {}
   state.nominatedPlayers = []
   state.nominationVotes = {}
@@ -522,7 +526,15 @@ async function resolveNominationVoting(state: GameState, playerId: string): Prom
     const victim = state.players.find(p => p.id === topPlayers[0])
     if (victim) {
       victim.isAlive = false
-      return transitionToNight(state, `Місто виключило ${victim.name}!` + voteLog, playerId)
+      state.votingPhase = 'last_words'
+      state.activeSpeakerId = victim.id
+      state.speakerTimerStartedAt = null
+      state.lastWordPlayerId = victim.id
+      state.lastWordReason = 'voted_out'
+      state.lastEvent = `Місто виключило ${victim.name}! Останнє слово виключеного гравця.` + voteLog
+      
+      await setGameState(state)
+      return actionOk(state, playerId, { event: state.lastEvent })
     }
     return transitionToNight(state, 'Місто не дійшло згоди — нікого не виключено.' + voteLog, playerId)
   }
@@ -614,7 +626,15 @@ async function resolveDay(state: GameState, playerId: string): Promise<NextRespo
     const victim = state.players.find(p => p.id === lynched)
     if (victim) {
       victim.isAlive = false
-      event = `Місто виключило ${victim.name}!`
+      state.votingPhase = 'last_words'
+      state.activeSpeakerId = victim.id
+      state.speakerTimerStartedAt = null
+      state.lastWordPlayerId = victim.id
+      state.lastWordReason = 'voted_out'
+      state.lastEvent = `Місто виключило ${victim.name}! Останнє слово виключеного гравця.`
+      
+      await setGameState(state)
+      return actionOk(state, playerId, { event: state.lastEvent })
     }
   } else {
     event = 'Місто не дійшло згоди — нікого не виключено.'
