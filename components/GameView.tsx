@@ -5,7 +5,7 @@ import { LiveKitRoom, useTracks, VideoTrack, AudioTrack } from '@livekit/compone
 import { Track } from 'livekit-client'
 import '@livekit/components-styles'
 
-type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
+type Role = 'mafia' | 'don' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 type Phase = 'night' | 'day' | 'ended'
 
 function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, isAlive, isHost, isSpeakingNow }: any) {
@@ -22,7 +22,10 @@ function PlayerMedia({ targetPlayerId, isLocal, gamePhase, myRole, targetRole, i
     if (isLocal) {
       canSee = true 
       canHear = false
-    } else if (myRole === 'mafia' && targetRole === 'mafia') {
+    } else if (
+      (myRole === 'mafia' || myRole === 'don') &&
+      (targetRole === 'mafia' || targetRole === 'don')
+    ) {
       canSee = true
       canHear = true
     } else {
@@ -73,6 +76,7 @@ interface NightActionsStatus {
   sheriff: { required: boolean; done: boolean }
   doctor: { required: boolean; done: boolean }
   prostitute: { required: boolean; done: boolean }
+  don?: { required: boolean; done: boolean }
 }
 
 type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | null
@@ -93,6 +97,11 @@ interface GameState {
   nightRevealTime?: number | null
   lampsRevealed?: boolean
   sheriffChecks?: Record<string, 'mafia' | 'town'>
+  donChecks?: Record<string, 'sheriff' | 'not_sheriff'>
+  mafiaKillVotes?: Record<string, string>
+  allowNominations?: boolean
+  canEndNight?: boolean
+  nightMovesComplete?: boolean
   activeSpeakerId?: string | null
   speakerTimerStartedAt?: number | null
   speakersDone?: string[]
@@ -111,6 +120,7 @@ interface GameState {
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
   mafia: { icon: '🔫', label: 'Мафія', color: '#ef4444', nightAction: 'kill' },
+  don: { icon: '🎩', label: 'Дон', color: '#b91c1c', nightAction: 'don_investigate' },
   sheriff: { icon: '🔍', label: 'Шериф', color: '#3b82f6', nightAction: 'investigate' },
   doctor: { icon: '💉', label: 'Лікар', color: '#22c55e', nightAction: 'heal' },
   prostitute: { icon: '💋', label: 'Повія', color: '#ec4899', nightAction: 'block' },
@@ -250,6 +260,16 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     if (game.lastEvent) showNotif(game.lastEvent)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game?.phase])
+
+  // Дон: після голосування мафії знову дозволяємо перевірку
+  useEffect(() => {
+    if (game?.myRole !== 'don') return
+    const team = game.players.filter(p => p.isAlive && (p.role === 'mafia' || p.role === 'don'))
+    const votes = game.mafiaKillVotes ?? {}
+    if (team.length > 1 && team.every(m => votes[m.id])) {
+      setActionDone(false)
+    }
+  }, [game?.mafiaKillVotes, game?.myRole, game?.players])
 
 
 
@@ -477,9 +497,26 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
   const handleNightAction = async () => {
     if (!selectedTarget || !game?.myRole) return
-    const meta = ROLE_META[game.myRole]
-    if (!meta.nightAction) return
-    await sendAction(meta.nightAction, selectedTarget)
+
+    const mafiaVotes = game.mafiaKillVotes ?? {}
+    const mafiaTeam = game.players.filter(
+      p => p.isAlive && (p.role === 'mafia' || p.role === 'don')
+    )
+    const usesTeamVote = mafiaTeam.length > 1
+
+    let actionName: string | null = null
+    if (game.myRole === 'don') {
+      const killDone = Object.keys(mafiaVotes).length >= mafiaTeam.length
+      actionName = killDone ? 'don_investigate' : 'mafia_vote'
+    } else if (game.myRole === 'mafia') {
+      actionName = usesTeamVote ? 'mafia_vote' : 'kill'
+    } else {
+      const meta = ROLE_META[game.myRole]
+      actionName = meta.nightAction
+    }
+
+    if (!actionName) return
+    await sendAction(actionName, selectedTarget)
     setActionDone(true)
     if (game.myRole === 'sheriff') {
       const res = await fetch(`/api/game/state?playerId=${playerId}`)
@@ -525,17 +562,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const alivePlayers = game.players.filter(p => p.isAlive && p.id !== playerId)
   const isHost = me?.isHost ?? false
 
-  // Перевіряємо чи всі активні ролі зробили свій хід (реальний стан)
-  const s = game.nightActionsStatus
-  const allNightActionsReallyDone = s
-    ? (!s.mafia.required || s.mafia.done) &&
-    (!s.sheriff.required || s.sheriff.done) &&
-    (!s.doctor.required || s.doctor.done) &&
-    (!s.prostitute.required || s.prostitute.done)
-    : true
-
-  // Для UI та кнопок використовуємо "відкладений" стан (лампи загорілися)
-  const allNightActionsDone = lampsRevealed
+  const allNightActionsDone = game.canEndNight ?? (lampsRevealed && (game.nightMovesComplete ?? false))
 
   // Сортуємо за slotNumber → правильний порядок за годинниковою стрілкою
   const sortedPlayers = [...game.players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0))
@@ -562,12 +589,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const iAmSpeakingNow = (playerId === game.activeSpeakerId && !!game.speakerTimerStartedAt) || 
                          (playerId === game.defensePlayerId && !!game.defenseTimerStartedAt)
 
-  const isPublishingVideo = iAmAlive && (game.phase !== 'night' || myRole === 'mafia')
+  const isPublishingVideo = iAmAlive && (game.phase !== 'night' || myRole === 'mafia' || myRole === 'don')
   
   let isPublishingAudio = false
   if (iAmAlive) {
     if (game.phase === 'night') {
-      if (myRole === 'mafia') isPublishingAudio = true
+      if (myRole === 'mafia' || myRole === 'don') isPublishingAudio = true
     } else {
       if (iAmSpeakingNow) isPublishingAudio = true
     }
@@ -817,9 +844,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
               // Логіка можливості вибору цілі
               let canSelect = false
               if (!isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone) {
-                if (game.phase === 'night' && game.myRole !== 'civilian') canSelect = true
+                if (game.phase === 'night' && game.myRole && game.myRole !== 'civilian') canSelect = true
                 if (game.phase === 'day') {
-                  if (game.votingPhase === 'nominating' && game.activeSpeakerId === playerId) canSelect = true
+                  if (game.allowNominations !== false && game.votingPhase === 'nominating' && game.activeSpeakerId === playerId) canSelect = true
                   if ((game.votingPhase === 'voting' || game.votingPhase === 'revote') && game.nominatedPlayers?.includes(p.id)) canSelect = true
                   // Fallback для legacy vote (якщо фаза дня без спеціальних фаз голосування)
                   if (!game.votingPhase && !game.activeSpeakerId) canSelect = true
@@ -883,6 +910,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                     />
                   )}
 
+                  {game.donChecks?.[p.id] === 'sheriff' && (
+                    <div className="don-check-mark don-check-sheriff" title="Дон: це шериф">⭐</div>
+                  )}
+                  {game.donChecks?.[p.id] === 'not_sheriff' && (
+                    <div className="don-check-mark don-check-not-sheriff" title="Дон: не шериф" />
+                  )}
+
                   {/* Іконка таймауту */}
                   {showTimer && (
                     <div className="seat-timer" title={`Викине через ${secsLeft}с`}>⏳ {secsLeft}с</div>
@@ -913,8 +947,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   {isMine && myMeta && (
                     <div className="seat-role" style={{ color: myMeta.color }}>{myMeta.label}</div>
                   )}
-                  {!isMine && p.role === 'mafia' && myRole === 'mafia' && (
-                    <div className="seat-role" style={{ color: '#ef4444' }}>🔫 Мафія</div>
+                  {!isMine && (p.role === 'mafia' || p.role === 'don') && (myRole === 'mafia' || myRole === 'don') && (
+                    <div className="seat-role" style={{ color: '#ef4444' }}>
+                      {p.role === 'don' ? '🎩 Дон' : '🔫 Мафія'}
+                    </div>
                   )}
                   {!p.isAlive && p.role && (
                     <div className="seat-role" style={{ color: '#64748b' }}>
@@ -950,9 +986,20 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   ) : (
                     <>
                       <p className="action-hint">
-                        {myMeta?.nightAction === 'kill' && 'Оберіть жертву для вбивства:'}
+                        {(myRole === 'mafia' || myRole === 'don') && (() => {
+                          const team = game.players.filter(p => p.isAlive && (p.role === 'mafia' || p.role === 'don'))
+                          const votes = game.mafiaKillVotes ?? {}
+                          const voted = votes[playerId]
+                          if (team.length > 1) {
+                            if (myRole === 'don' && Object.keys(votes).length >= team.length) {
+                              return 'Дон: оберіть кого перевірити (шериф чи ні):'
+                            }
+                            return `Мафія голосує за жертву (${Object.keys(votes).length}/${team.length}):`
+                          }
+                          return 'Оберіть жертву для вбивства:'
+                        })()}
                         {myMeta?.nightAction === 'heal' && 'Оберіть гравця для захисту:'}
-                        {myMeta?.nightAction === 'investigate' && 'Оберіть гравця для перевірки:'}
+                        {myMeta?.nightAction === 'investigate' && 'Оберіть гравця для перевірки (шериф):'}
                         {myMeta?.nightAction === 'block' && 'Оберіть гравця для блокування:'}
                       </p>
                       {investigateResult && (
@@ -1047,7 +1094,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   </>
                 )}
 
-                {game.votingPhase === 'nominating' && game.activeSpeakerId && (
+                {game.votingPhase === 'nominating' && game.allowNominations !== false && game.activeSpeakerId && (
                   <>
                     <h2 className="action-title">👉 Фаза номінації</h2>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1198,8 +1245,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                 {!game.votingPhase && !game.activeSpeakerId && (
                    <>
-                     <h2 className="action-title">☀️ Денна фаза</h2>
-                     <p className="action-hint">Очікування дії ведучого...</p>
+                     <h2 className="action-title">{game.day === 1 ? '☀️ День 1 завершено' : '☀️ Денна фаза'}</h2>
+                     <p className="action-hint">
+                       {game.day === 1
+                         ? 'У перший день номінації заборонені. Ведучий може перейти до ночі.'
+                         : 'Очікування дії ведучого...'}
+                     </p>
                      {isHost && !phaseAdvanced && (
                        <button className="phase-btn" onClick={handleNextPhase}>🌙 Перейти до ночі</button>
                      )}

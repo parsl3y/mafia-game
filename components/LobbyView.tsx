@@ -53,6 +53,20 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
 
   // ─── Polling ───────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
+    const tryEnterGame = async (): Promise<boolean> => {
+      try {
+        const gameRes = await fetch(`/api/game/state?playerId=${playerId}`)
+        if (!gameRes.ok) return false
+        const game = await gameRes.json()
+        const inGame = game.players?.some((p: { id: string }) => p.id === playerId)
+        if (inGame && (game.phase === 'night' || game.phase === 'day')) {
+          onGameStart()
+          return true
+        }
+      } catch { /* ignore */ }
+      return false
+    }
+
     try {
       const [lobbyRes, settingsRes, gameRes] = await Promise.all([
         fetch('/api/lobby'),
@@ -63,9 +77,10 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
       // 1. Спочатку перевіряємо чи розпочалась гра
       if (gameRes.ok) {
         const game = await gameRes.json()
-        if (game.phase === 'night' || game.phase === 'day') {
+        const inGame = game.players?.some((p: { id: string }) => p.id === playerId)
+        if (inGame && (game.phase === 'night' || game.phase === 'day')) {
           onGameStart()
-          return // Виходимо відразу, оскільки ми вже в грі!
+          return
         }
       }
 
@@ -78,17 +93,18 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           if (me !== undefined) {
             amHostRef.current = me.isHost
             setAmHost(me.isHost)
-            missingCountRef.current = 0 // скидаємо лічильник спроб
+            missingCountRef.current = 0
+          } else if (d.players.length === 0) {
+            missingCountRef.current = 0
+            if (await tryEnterGame()) return
           } else {
-            // Якщо лобі повністю порожнє (length === 0), це означає, що хост щойно запустив гру
-            // та очистив лобі. У цьому випадку ми ні в якому разі НЕ викидаємо гравця,
-            // а чекаємо наступного кроку оновлення, де отримаємо стан гри від gameRes.
-            if (d.players.length > 0) {
-              missingCountRef.current += 1
-              if (missingCountRef.current >= 3) {
-                onLeave()
-                return
-              }
+            missingCountRef.current += 1
+            if (missingCountRef.current >= 1) {
+              if (await tryEnterGame()) return
+            }
+            if (missingCountRef.current >= 6) {
+              onLeave()
+              return
             }
           }
         }
@@ -101,7 +117,7 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
         setHasFetchedSettings(true)
       }
     } catch { /* ignore network errors */ }
-  }, [playerId, onGameStart, hasFetchedSettings, onLeave]) // додано onLeave у dependencies
+  }, [playerId, onGameStart, hasFetchedSettings, onLeave])
 
   useEffect(() => {
     fetchAll()
@@ -113,17 +129,27 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
   useEffect(() => {
     const beat = async () => {
       try {
-        await fetch('/api/lobby/heartbeat', {
+        const res = await fetch('/api/lobby/heartbeat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ playerId }),
         })
+        if (res.status === 404) {
+          const gameRes = await fetch(`/api/game/state?playerId=${playerId}`)
+          if (gameRes.ok) {
+            const game = await gameRes.json()
+            const inGame = game.players?.some((p: { id: string }) => p.id === playerId)
+            if (inGame && (game.phase === 'night' || game.phase === 'day')) {
+              onGameStart()
+            }
+          }
+        }
       } catch { /* ignore */ }
     }
-    beat() // одразу
+    beat()
     const id = setInterval(beat, 10000)
     return () => clearInterval(id)
-  }, [playerId])
+  }, [playerId, onGameStart])
 
   // ─── Збереження налаштувань ────────────────────────────────
   const saveSettings = async (next: Settings) => {

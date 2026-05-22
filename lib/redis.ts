@@ -10,7 +10,7 @@ import { Redis as UpstashRedis } from '@upstash/redis'
 // Types
 // ==============================
 
-export type Role = 'mafia' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
+export type Role = 'mafia' | 'don' | 'sheriff' | 'civilian' | 'doctor' | 'prostitute'
 export type GamePhase = 'lobby' | 'night' | 'day' | 'ended'
 
 export interface GameSettings {
@@ -47,6 +47,8 @@ export interface GameState {
   nightProtected: string | null
   nightBlocked: string | null
   nightInvestigated: string | null
+  nightDonInvestigated?: string | null
+  mafiaKillVotes?: Record<string, string>
   votes: Record<string, string>
   killedLastNight: string | null
   winner: 'mafia' | 'town' | null
@@ -54,6 +56,7 @@ export interface GameState {
   isPaused?: boolean
   pauseRequestedBy?: string | null
   sheriffChecks?: Record<string, 'mafia' | 'town'>
+  donChecks?: Record<string, 'sheriff' | 'not_sheriff'>
   nightStartedAt?: number
   fakeDelays?: Record<string, number>
   nightRevealTime?: number | null
@@ -86,23 +89,23 @@ interface RedisClient {
 }
 
 function getClient(): RedisClient {
-  const upstashUrl   = process.env.UPSTASH_REDIS_REST_URL
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL
   const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN
 
   if (upstashUrl && upstashToken) {
     // Upstash — HTTP-based, works everywhere (Vercel, Edge, serverless)
     const client = new UpstashRedis({ url: upstashUrl, token: upstashToken })
     return {
-      get:  async (key) => {
+      get: async (key) => {
         const val = await client.get(key)
         if (val === null || val === undefined) return null
         // Upstash auto-parses JSON → re-serialize to keep consistent string interface
         if (typeof val === 'string') return val
         return JSON.stringify(val)
       },
-      set:  async (key, value, opts) =>
+      set: async (key, value, opts) =>
         opts?.ex ? client.set(key, value, { ex: opts.ex }) : client.set(key, value),
-      del:  async (key) => client.del(key),
+      del: async (key) => client.del(key),
     }
   }
 
@@ -118,10 +121,10 @@ function getClient(): RedisClient {
   }
   const io = g._ioredis
   return {
-    get:  (key)          => io.get(key),
-    set:  (key, value, opts) =>
+    get: (key) => io.get(key),
+    set: (key, value, opts) =>
       opts?.ex ? io.set(key, value, 'EX', opts.ex) : io.set(key, value),
-    del:  (key)          => io.del(key),
+    del: (key) => io.del(key),
   }
 }
 
@@ -135,8 +138,8 @@ function redis(): RedisClient {
 // ==============================
 // Keys
 // ==============================
-const LOBBY_KEY    = 'mafia:lobby'
-const GAME_KEY     = 'mafia:game'
+const LOBBY_KEY = 'mafia:lobby'
+const GAME_KEY = 'mafia:game'
 const SETTINGS_KEY = 'mafia:settings'
 
 // ==============================
