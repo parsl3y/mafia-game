@@ -1175,75 +1175,115 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   </>
                 )}
 
-                {(game.votingPhase === 'voting' || game.votingPhase === 'revote') && (
-                  <>
-                    <h2 className="action-title">
-                      {game.votingPhase === 'revote' ? '⚠️ Повторне голосування' : '☀️ Денна фаза — Голосування'}
-                    </h2>
-                    
-                    <div className="nominees-list" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {game.nominatedPlayers?.map(nomineeId => {
-                        const nominee = game.players.find(p => p.id === nomineeId);
-                        if (!nominee) return null;
-                        
-                        const voters = Object.entries(game.nominationVotes || {})
-                          .filter(([voterId, targetId]) => targetId === nomineeId)
-                          .map(([voterId]) => game.players.find(p => p.id === voterId)?.name)
-                          .filter(Boolean);
+                {(game.votingPhase === 'voting' || game.votingPhase === 'revote') && (() => {
+                  const eligibleVoters = game.players.filter(p => {
+                    if (!p.isAlive) return false;
+                    if (game.votingPhase === 'revote' && game.nominatedPlayers?.includes(p.id)) {
+                      return false;
+                    }
+                    return true;
+                  });
+                  const votedPlayerIds = Object.keys(game.nominationVotes || {});
+                  const notVotedYet = eligibleVoters.filter(p => !votedPlayerIds.includes(p.id));
 
-                        const isMyVote = game.nominationVotes?.[playerId] === nomineeId;
-                        const amIOnRevote = game.votingPhase === 'revote' && game.nominatedPlayers?.includes(playerId);
-                        const canIVote = iAmAlive && !amIOnRevote;
+                  return (
+                    <>
+                      <h2 className="action-title">
+                        {game.votingPhase === 'revote' ? '⚠️ Повторне голосування' : '☀️ Денна фаза — Голосування'}
+                      </h2>
+                      
+                      <div className="nominees-list" style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {game.nominatedPlayers?.map(nomineeId => {
+                          const nominee = game.players.find(p => p.id === nomineeId);
+                          if (!nominee) return null;
+                          
+                          const voters = Object.entries(game.nominationVotes || {})
+                            .filter(([voterId, targetId]) => targetId === nomineeId)
+                            .map(([voterId]) => game.players.find(p => p.id === voterId)?.name)
+                            .filter(Boolean);
 
-                        return (
-                          <div key={nomineeId} className={`nominee-card ${isMyVote ? 'nominee-selected' : ''}`} style={{
-                            padding: '12px 16px',
-                            background: isMyVote ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg3)',
-                            border: `1px solid ${isMyVote ? 'rgba(245, 158, 11, 0.4)' : 'var(--border)'}`,
-                            borderRadius: '12px',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isMyVote ? '#f59e0b' : 'var(--text)' }}>
-                                {nominee.name}
-                              </span>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text2)', minHeight: '16px' }}>
-                                {voters.length > 0 ? `Голоси: ${voters.join(', ')}` : 'Немає голосів'}
-                              </span>
+                          const isMyVote = game.nominationVotes?.[playerId] === nomineeId;
+                          const amIOnRevote = game.votingPhase === 'revote' && game.nominatedPlayers?.includes(playerId);
+                          const canIVote = iAmAlive && !amIOnRevote && nomineeId !== playerId;
+
+                          return (
+                            <div key={nomineeId} className={`nominee-card ${isMyVote ? 'nominee-selected' : ''}`} style={{
+                              padding: '12px 16px',
+                              background: isMyVote ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg3)',
+                              border: `1px solid ${isMyVote ? 'rgba(245, 158, 11, 0.4)' : 'var(--border)'}`,
+                              borderRadius: '12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <span style={{ fontWeight: 'bold', fontSize: '1rem', color: isMyVote ? '#f59e0b' : 'var(--text)' }}>
+                                  {nominee.name}
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text2)', minHeight: '16px' }}>
+                                  {voters.length > 0 ? `Голоси: ${voters.join(', ')}` : 'Немає голосів'}
+                                </span>
+                              </div>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                {isMyVote && (
+                                  <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.85rem' }}>Ваш вибір ✅</span>
+                                )}
+                                {canIVote && !isMyVote && (
+                                  <button 
+                                    className="action-btn vote-btn" 
+                                    style={{ margin: 0, padding: '8px 16px', fontSize: '0.85rem' }}
+                                    onClick={() => sendAction('nomination_vote', nomineeId)}
+                                  >
+                                    🗳️ {game.nominationVotes?.[playerId] ? 'Змінити голос' : 'Проголосувати'}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                              {isMyVote && (
-                                <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '0.85rem' }}>Ваш вибір ✅</span>
-                              )}
-                              {canIVote && !isMyVote && (
-                                <button 
-                                  className="action-btn vote-btn" 
-                                  style={{ margin: 0, padding: '8px 16px', fontSize: '0.85rem' }}
-                                  onClick={() => sendAction('nomination_vote', nomineeId)}
-                                >
-                                  🗳️ {game.nominationVotes?.[playerId] ? 'Змінити голос' : 'Проголосувати'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
 
-                    {!iAmAlive && (
-                      <p className="action-hint" style={{ marginTop: '16px' }}>💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
-                    )}
-                    {game.votingPhase === 'revote' && game.nominatedPlayers?.includes(playerId) && (
-                      <p className="action-hint" style={{ marginTop: '16px', color: '#ef4444' }}>⚠️ Ви не можете брати участь у повторному голосуванні.</p>
-                    )}
-                    {isHost && !phaseAdvanced && (
-                      <button className="phase-btn" style={{ marginTop: '20px' }} onClick={handleNextPhase}>🌙 Завершити голосування</button>
-                    )}
-                  </>
-                )}
+                      {notVotedYet.length > 0 ? (
+                        <div className="not-voted-list" style={{
+                          marginTop: '16px',
+                          padding: '10px 14px',
+                          background: 'rgba(245, 158, 11, 0.05)',
+                          border: '1px dashed rgba(245, 158, 11, 0.25)',
+                          borderRadius: '10px',
+                          fontSize: '0.85rem',
+                          color: 'var(--text2)'
+                        }}>
+                          ⏳ <strong>Ще не проголосували:</strong> {notVotedYet.map(p => p.name).join(', ')}
+                        </div>
+                      ) : (
+                        <div className="all-voted-badge" style={{
+                          marginTop: '16px',
+                          padding: '10px 14px',
+                          background: 'rgba(34, 197, 94, 0.05)',
+                          border: '1px solid rgba(34, 197, 94, 0.2)',
+                          borderRadius: '10px',
+                          fontSize: '0.85rem',
+                          color: '#22c55e',
+                          fontWeight: 'bold',
+                          textAlign: 'center'
+                        }}>
+                          ✅ Всі гравці зробили свій вибір!
+                        </div>
+                      )}
+
+                      {!iAmAlive && (
+                        <p className="action-hint" style={{ marginTop: '16px' }}>💀 Ви мертві, але продовжуєте керувати грою як Ведучий.</p>
+                      )}
+                      {game.votingPhase === 'revote' && game.nominatedPlayers?.includes(playerId) && (
+                        <p className="action-hint" style={{ marginTop: '16px', color: '#ef4444' }}>⚠️ Ви не можете брати участь у повторному голосуванні.</p>
+                      )}
+                      {isHost && !phaseAdvanced && (
+                        <button className="phase-btn" style={{ marginTop: '20px' }} onClick={handleNextPhase}>🌙 Завершити голосування</button>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {game.votingPhase === 'defense' && game.defensePlayerId && (
                   <>

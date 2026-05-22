@@ -328,6 +328,10 @@ export async function POST(req: Request) {
         if (state.votingPhase === 'revote' && state.nominatedPlayers?.includes(playerId)) {
           return NextResponse.json({ error: 'Гравці на переголосуванні не мають права голосу' }, { status: 400 })
         }
+        // Не можна голосувати за себе
+        if (targetId === playerId) {
+          return NextResponse.json({ error: 'Не можна голосувати за себе' }, { status: 400 })
+        }
 
         if (!state.nominationVotes) state.nominationVotes = {}
         state.nominationVotes[playerId] = targetId
