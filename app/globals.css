@@ -393,7 +393,7 @@ html, body {
 }
 
 .game-container {
-  max-width: 1200px;
+  max-width: 1020px;
   margin: 0 auto;
   padding: 24px 20px;
 }
@@ -670,7 +670,7 @@ html, body {
 
 /* Responsive — менший стіл на мобільних */
 @media (max-width: 600px) {
-  .circular-arena { transform: scale(.32); transform-origin: top center; margin-bottom: -800px; }
+  .circular-arena { transform: scale(.38); transform-origin: top center; margin-bottom: -620px; }
 }
 
 /* ===================== PLAYER CARD (legacy, unused) ===================== */
