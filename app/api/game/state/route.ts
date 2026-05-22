@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     }
 
     const now = Date.now()
-    const GAME_TIMEOUT_MS = 90 * 1000
+    const GAME_TIMEOUT_MS = 180 * 1000
     let stateChanged = false
 
     if (!state.isPaused) {

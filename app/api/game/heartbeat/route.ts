@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getGameState, setGameState } from '@/lib/redis'
 
-const GAME_TIMEOUT_MS = 5 * 60 * 1000 // 5 хвилин без heartbeat → "мертвий"
+const GAME_TIMEOUT_MS = 3 * 60 * 1000 // 3 хвилини без heartbeat → "мертвий"
 
 // POST /api/game/heartbeat — оновлює lastSeen гравця у грі
 export async function POST(req: Request) {
