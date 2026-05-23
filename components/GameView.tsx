@@ -1471,41 +1471,34 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                       {/* Кнопки вибору для живих гравців */}
                       {iAmAlive ? (() => {
                         const myCrashVote = game.crashVotes?.[playerId]
-                        const alreadyCrashVoted = !!myCrashVote
+                        const alreadyCrashVoted = myCrashVote === 'keep'
 
                         return (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
                             {!alreadyCrashVoted ? (
-                              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '320px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'center', width: '100%', maxWidth: '320px' }}>
                                 <button
                                   className="action-btn"
-                                  style={{ flex: 1, backgroundColor: '#22c55e', boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)', padding: '12px 6px' }}
+                                  style={{ width: '100%', backgroundColor: '#22c55e', boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)', padding: '12px 24px', fontSize: '1rem' }}
                                   onClick={() => sendAction('crash_vote', 'keep')}
                                 >
                                   👍 ЗАЛИШИТИ ОБОХ
-                                </button>
-                                <button
-                                  className="action-btn"
-                                  style={{ flex: 1, backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', padding: '12px 6px' }}
-                                  onClick={() => sendAction('crash_vote', 'kick')}
-                                >
-                                  👎 ВИГНАТИ ОБОХ
                                 </button>
                               </div>
                             ) : (
                               <div style={{
                                 padding: '12px 24px',
-                                background: myCrashVote === 'keep' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                                border: `1px solid ${myCrashVote === 'keep' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
                                 borderRadius: '12px',
-                                color: myCrashVote === 'keep' ? '#22c55e' : '#ef4444',
+                                color: '#22c55e',
                                 fontWeight: 'bold',
                                 fontSize: '1rem',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '8px'
                               }}>
-                                {myCrashVote === 'keep' ? '👍 Ваш голос: Залишити обох' : '👎 Ваш голос: Вигнати обох'}
+                                👍 Ви проголосували за збереження обох
                               </div>
                             )}
                           </div>
