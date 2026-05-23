@@ -79,7 +79,7 @@ interface NightActionsStatus {
   don?: { required: boolean; done: boolean }
 }
 
-type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | 'last_words' | null
+type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | 'last_words' | 'car_crash' | null
 
 interface GameState {
   id?: string
@@ -118,6 +118,8 @@ interface GameState {
   defenseOrder?: string[]
   defensesDone?: string[]
   nominationVotes?: Record<string, string>
+  crashTimerStartedAt?: number | null
+  crashVotes?: Record<string, 'keep' | 'kick'>
 }
 
 const ROLE_META: Record<Role, { icon: string; label: string; color: string; nightAction: string | null }> = {
@@ -1433,6 +1435,111 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                           )}
                         </div>
                       )}
+                    </>
+                  )}
+
+                  {game.votingPhase === 'car_crash' && (
+                    <>
+                      <h2 className="action-title" style={{ color: '#f59e0b' }}>⚠️ АВТОКАТАСТРОФА (Tie Resolution)</h2>
+                      <p className="action-hint">
+                        Голосування повторно не вирішило нічию. Голосуємо: залишити обох гравців у грі?
+                      </p>
+
+                      {/* Таймер */}
+                      {game.crashTimerStartedAt && (() => {
+                        const elapsed = Math.floor((now - game.crashTimerStartedAt) / 1000)
+                        const secsLeft = Math.max(0, 15 - elapsed)
+                        return (
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            margin: '16px 0',
+                            padding: '12px',
+                            background: secsLeft <= 5 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                            border: secsLeft <= 5 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '12px',
+                          }}>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text2)' }}>⏱️ Часу залишилось:</span>
+                            <span style={{ fontSize: '1.75rem', fontWeight: 'bold', color: secsLeft <= 5 ? '#ef4444' : '#f59e0b' }}>
+                              {secsLeft} сек
+                            </span>
+                          </div>
+                        )
+                      })()}
+
+                      {/* Кнопки вибору для живих гравців */}
+                      {iAmAlive ? (() => {
+                        const myCrashVote = game.crashVotes?.[playerId]
+                        const alreadyCrashVoted = !!myCrashVote
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', marginTop: '16px' }}>
+                            {!alreadyCrashVoted ? (
+                              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '320px' }}>
+                                <button
+                                  className="action-btn"
+                                  style={{ flex: 1, backgroundColor: '#22c55e', boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)', padding: '12px 6px' }}
+                                  onClick={() => sendAction('crash_vote', 'keep')}
+                                >
+                                  👍 ЗАЛИШИТИ ОБОХ
+                                </button>
+                                <button
+                                  className="action-btn"
+                                  style={{ flex: 1, backgroundColor: '#ef4444', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)', padding: '12px 6px' }}
+                                  onClick={() => sendAction('crash_vote', 'kick')}
+                                >
+                                  👎 ВИГНАТИ ОБОХ
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{
+                                padding: '12px 24px',
+                                background: myCrashVote === 'keep' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                border: `1px solid ${myCrashVote === 'keep' ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                                borderRadius: '12px',
+                                color: myCrashVote === 'keep' ? '#22c55e' : '#ef4444',
+                                fontWeight: 'bold',
+                                fontSize: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                {myCrashVote === 'keep' ? '👍 Ваш голос: Залишити обох' : '👎 Ваш голос: Вигнати обох'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })() : (
+                        <p className="action-hint" style={{ marginTop: '16px' }}>
+                          Спостерігайте за голосуванням міста...
+                        </p>
+                      )}
+
+                      {/* Стан голосування */}
+                      {(() => {
+                        const totalAlive = game.players.filter(p => p.isAlive).length
+                        const votedCount = Object.keys(game.crashVotes || {}).length
+                        const keepsCount = Object.values(game.crashVotes || {}).filter(v => v === 'keep').length
+
+                        return (
+                          <div style={{
+                            marginTop: '20px',
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: '1px solid var(--border)',
+                            padding: '16px',
+                            borderRadius: '12px',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{ fontSize: '0.9rem', marginBottom: '8px', color: 'var(--text2)' }}>
+                              Проголосували: <strong style={{ color: 'var(--text)' }}>{votedCount} / {totalAlive}</strong>
+                            </div>
+                            <div style={{ fontSize: '0.85rem', color: 'var(--text3)' }}>
+                              Голосів за збереження обох: <strong style={{ color: '#22c55e' }}>{keepsCount}</strong> (треба більше ніж {Math.floor(totalAlive / 2)})
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </>
                   )}
 

@@ -266,3 +266,73 @@ export function maskGameStateForPlayer(state: GameState, playerId: string | null
       isHost || myMafiaTeam ? (state.mafiaKillVotes ?? {}) : undefined,
   }
 }
+
+export function resolveCarCrash(state: GameState): void {
+  const votes = state.crashVotes ?? {}
+  const alivePlayers = state.players.filter(p => p.isAlive)
+  
+  // Рахуємо голоси за "keep" (залишити обох гравців)
+  let keepCount = 0
+  for (const voteVal of Object.values(votes)) {
+    if (voteVal === 'keep') {
+      keepCount++
+    }
+  }
+
+  // Якщо більшість гравців натиснула "залишити" (більше половини від усіх живих)
+  const threshold = alivePlayers.length / 2
+  const keepBoth = keepCount > threshold
+
+  const nominees = state.nominatedPlayers ?? []
+  const nomineeNames = nominees
+    .map(id => state.players.find(p => p.id === id)?.name ?? '???')
+    .join(' та ')
+
+  let event = ''
+  if (keepBoth) {
+    event = `Рішенням міста (${keepCount} голосів за збереження): обидва гравці (${nomineeNames}) залишаються у грі!`
+  } else {
+    // Обидва вилітають!
+    nominees.forEach(id => {
+      const p = state.players.find(player => player.id === id)
+      if (p) p.isAlive = false
+    })
+    event = `Рішенням міста (${keepCount} голосів за збереження): обоє гравців (${nomineeNames}) залишають гру!`
+  }
+
+  // Перевіряємо переможця
+  const winner = checkWinner(state)
+  if (winner) {
+    state.winner = winner
+    state.phase = 'ended'
+  } else {
+    // Переходимо до нічної фази
+    state.lastEvent = event
+    state.votes = {}
+    state.phase = 'night'
+    state.day += 1
+    state.nightStartedAt = Date.now()
+    state.nightRevealTime = null
+    state.nightDonInvestigated = null
+    state.mafiaKillVotes = {}
+    state.fakeDelays = {
+      mafia: Math.floor(Math.random() * 4000) + 1000,
+      sheriff: Math.floor(Math.random() * 4000) + 1000,
+      doctor: Math.floor(Math.random() * 4000) + 1000,
+      prostitute: Math.floor(Math.random() * 4000) + 1000,
+    }
+  }
+
+  // Очищаємо номінаційні/краш поля
+  state.votingPhase = null
+  state.nominations = {}
+  state.nominatedPlayers = []
+  state.nominationVotes = {}
+  state.firstRoundVotes = {}
+  state.defensePlayerId = null
+  state.defenseTimerStartedAt = null
+  state.defenseOrder = []
+  state.defensesDone = []
+  state.crashTimerStartedAt = null
+  state.crashVotes = {}
+}

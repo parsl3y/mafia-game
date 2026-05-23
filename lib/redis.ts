@@ -36,7 +36,7 @@ export interface Player {
   lastSeen: number  // timestamp останнього heartbeat
 }
 
-export type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | 'last_words' | null
+export type VotingPhase = 'speeches' | 'nominating' | 'voting' | 'defense' | 'revote' | 'last_words' | 'car_crash' | null
 
 export interface GameState {
   id?: string
@@ -77,6 +77,8 @@ export interface GameState {
   defensesDone?: string[]                      // finished defense speeches
   nominationVotes?: Record<string, string>     // voterId → nomineeId (vote target)
   firstRoundVotes?: Record<string, string>     // voterId → nomineeId (saved first round votes)
+  crashTimerStartedAt?: number | null
+  crashVotes?: Record<string, 'keep' | 'kick'>
 }
 
 

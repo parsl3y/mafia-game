@@ -7,6 +7,7 @@ import {
   finishSpeakerTurn,
   maskGameStateForPlayer,
   isMafiaTeamRole,
+  resolveCarCrash,
 } from '@/lib/game-logic'
 import { advanceDefense } from '../action/route'
 
@@ -46,6 +47,16 @@ export async function GET(req: Request) {
         now - state.defenseTimerStartedAt >= 30_000
       ) {
         advanceDefense(state)
+        stateChanged = true
+      }
+
+      if (
+        state.phase === 'day' &&
+        state.votingPhase === 'car_crash' &&
+        state.crashTimerStartedAt &&
+        now - state.crashTimerStartedAt >= 15_000
+      ) {
+        resolveCarCrash(state)
         stateChanged = true
       }
 

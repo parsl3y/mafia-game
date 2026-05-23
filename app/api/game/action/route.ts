@@ -11,6 +11,7 @@ import {
   maskGameStateForPlayer,
   usesMafiaKillVoting,
   advanceSpeaker,
+  resolveCarCrash,
 } from '@/lib/game-logic'
 
 function actionOk(state: GameState, playerId: string, extra?: Record<string, unknown>) {
@@ -380,6 +381,23 @@ export async function POST(req: Request) {
         if (!state.nominationVotes) state.nominationVotes = {}
         state.nominationVotes[playerId] = targetId
 
+      } else if (action === 'crash_vote') {
+        if (state.votingPhase !== 'car_crash') {
+          return NextResponse.json({ error: 'Зараз не фаза голосування за виключення обох' }, { status: 400 })
+        }
+        if (!targetId || (targetId !== 'keep' && targetId !== 'kick')) {
+          return NextResponse.json({ error: 'Неправильний голос' }, { status: 400 })
+        }
+        if (!state.crashVotes) state.crashVotes = {}
+        state.crashVotes[playerId] = targetId as 'keep' | 'kick'
+
+        // Якщо всі живі проголосували — завершуємо автокатастрофу достроково
+        const alivePlayers = state.players.filter(p => p.isAlive)
+        const totalVotesCount = Object.keys(state.crashVotes).length
+        if (totalVotesCount >= alivePlayers.length) {
+          resolveCarCrash(state)
+        }
+
         // ─── Defense speech actions ───
       } else if (action === 'start_defense') {
         if (state.votingPhase !== 'defense') {
@@ -585,8 +603,17 @@ async function resolveNominationVoting(state: GameState, playerId: string): Prom
 
   // Нічия! Перевіряємо чи це вже ревот
   if (state.votingPhase === 'revote') {
-    // Після ревота — нікого не виключають
-    return transitionToNight(state, 'Після повторного голосування — нічия! Нікого не виключено.' + voteLog, playerId)
+    state.votingPhase = 'car_crash'
+    state.crashTimerStartedAt = Date.now()
+    state.crashVotes = {}
+    
+    const nomineeNames = state.nominatedPlayers
+      ? state.nominatedPlayers.map(id => state.players.find(p => p.id === id)?.name ?? '???').join(' та ')
+      : 'обох гравців'
+      
+    state.lastEvent = `Повторне голосування завершилось нічиєю! Запустився таймер автокатастрофи: голосуємо чи залишати обох гравців (${nomineeNames}) у грі?`
+    await setGameState(state)
+    return actionOk(state, playerId, { event: state.lastEvent })
   }
 
   // Перша нічия → захисні промови
