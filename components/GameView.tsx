@@ -928,7 +928,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                 // Логіка можливості вибору цілі
                 let canSelect = false
-                if (!isMine && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone) {
+                const isMafiaAction = game.phase === 'night' && (game.myRole === 'mafia' || game.myRole === 'don')
+                const isSelfAllowed = isMafiaAction
+
+                if ((isSelfAllowed || !isMine) && p.isAlive && iAmAlive && game.phase !== 'ended' && !actionDone) {
                   if (game.phase === 'night' && game.myRole && game.myRole !== 'civilian') canSelect = true
                   if (game.phase === 'day') {
                     if (game.allowNominations !== false && game.votingPhase === 'nominating' && game.activeSpeakerId === playerId) canSelect = true
