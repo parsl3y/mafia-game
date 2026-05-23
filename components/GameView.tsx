@@ -1159,15 +1159,6 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                           })}
                         </div>
                       </div>
-                      <button
-                        className="phase-btn"
-                        onClick={handleNextPhase}
-                        disabled={!allNightActionsDone}
-                        style={{ opacity: allNightActionsDone ? 1 : 0.4, cursor: allNightActionsDone ? 'pointer' : 'not-allowed' }}
-                        title={!allNightActionsDone ? 'Очікування ходів усіх активних ролей' : ''}
-                      >
-                        ☀️ Перейти до дня
-                      </button>
                     </div>
                   )}
                 </>

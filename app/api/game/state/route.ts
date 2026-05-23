@@ -6,6 +6,7 @@ import {
   checkWinner,
   finishSpeakerTurn,
   maskGameStateForPlayer,
+  isMafiaTeamRole,
 } from '@/lib/game-logic'
 import { advanceDefense } from '../action/route'
 
@@ -58,6 +59,92 @@ export async function GET(req: Request) {
       if (movesComplete && !state.nightRevealTime) {
         const delay = Math.floor(Math.random() * 10000) + 5000
         state.nightRevealTime = Date.now() + delay
+        await setGameState(state)
+      } else if (movesComplete && state.nightRevealTime && now >= state.nightRevealTime) {
+        // --- АВТОМАТИЧНИЙ ПЕРЕХІД ДО ДНЯ ---
+        let event = ''
+        const { nightTarget, nightProtected, nightBlocked } = state
+
+        // Повія блокує мафію якщо вибрала мафіозі
+        const blockedRole = nightBlocked ? state.players.find(p => p.id === nightBlocked)?.role : null
+        const mafiaBlocked = nightBlocked && isMafiaTeamRole(blockedRole)
+
+        let killed: string | null = null
+        const victim = nightTarget && !mafiaBlocked && nightTarget !== nightProtected
+          ? state.players.find(p => p.id === nightTarget)
+          : null
+
+        if (victim) {
+          victim.isAlive = false
+          killed = victim.name
+          event = `Вночі загинув ${victim.name}!`
+        } else if (mafiaBlocked) {
+          event = 'Повія заблокувала мафію — вночі ніхто не загинув!'
+        } else {
+          event = nightTarget && nightTarget === nightProtected ? 'Вночі лікар врятував гравця!' : 'Тиха ніч — ніхто не загинув.'
+        }
+
+        // Результат перевірки шерифа
+        if (state.nightInvestigated) {
+          const target = state.players.find(p => p.id === state.nightInvestigated)
+          if (target) {
+            if (!state.sheriffChecks) state.sheriffChecks = {}
+            state.sheriffChecks[state.nightInvestigated] = isMafiaTeamRole(target.role) ? 'mafia' : 'town'
+          }
+        }
+        state.lastEvent = event
+        state.killedLastNight = killed
+        state.phase = 'day'
+        state.votes = {}
+        state.nightTarget = null
+        state.nightProtected = null
+        state.nightBlocked = null
+        state.nightInvestigated = null
+        state.nightDonInvestigated = null
+        state.mafiaKillVotes = {}
+
+        // Ініціалізація виступів на день
+        state.speakersDone = []
+        const totalPlayers = state.players.length || 1
+        const idealStartSlot = ((state.day - 1) % totalPlayers) + 1
+        const aliveSorted = [...state.players]
+          .filter(p => p.isAlive)
+          .sort((a, b) => {
+            const slotA = a.slotNumber ?? 0
+            const slotB = b.slotNumber ?? 0
+            const relA = (slotA - idealStartSlot + totalPlayers) % totalPlayers
+            const relB = (slotB - idealStartSlot + totalPlayers) % totalPlayers
+            return relA - relB
+          })
+
+        if (victim) {
+          state.votingPhase = 'last_words'
+          state.activeSpeakerId = victim.id
+          state.speakerTimerStartedAt = null
+          state.lastWordPlayerId = victim.id
+          state.lastWordReason = 'killed_night'
+        } else {
+          state.votingPhase = 'speeches'
+          state.activeSpeakerId = aliveSorted.length > 0 ? aliveSorted[0].id : null
+          state.speakerTimerStartedAt = null
+        }
+
+        // Ініціалізація системи номінацій
+        state.nominations = {}
+        state.nominatedPlayers = []
+        state.nominationVotes = {}
+        state.firstRoundVotes = {}
+        state.defensePlayerId = null
+        state.defenseTimerStartedAt = null
+        state.defenseOrder = []
+        state.defensesDone = []
+
+        const winner = checkWinner(state)
+        if (winner) {
+          state.winner = winner
+          state.phase = 'ended'
+        }
+
         await setGameState(state)
       }
     }
