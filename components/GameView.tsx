@@ -272,7 +272,10 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
   const fetchState = useCallback(async () => {
     try {
-      const res = await fetch(`/api/game/state?playerId=${playerId}`)
+      const res = await fetch(`/api/game/state?playerId=${playerId}&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
       if (!res.ok) return
       const data: GameState = await res.json()
       setGame(data)
@@ -547,7 +550,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       if (data.error) showNotif(data.error)
       return data
     }
-    await fetchState()
+    if (data.state) {
+      setGame(data.state)
+    } else {
+      await fetchState()
+    }
     if (data.event) showNotif(data.event)
     return data
   }
