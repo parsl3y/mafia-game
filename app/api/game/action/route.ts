@@ -334,6 +334,10 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: 'Не можна голосувати за себе' }, { status: 400 })
         }
 
+        if (state.nominationVotes && state.nominationVotes[playerId]) {
+          return NextResponse.json({ error: 'Ви вже проголосували і не можете змінити свій голос' }, { status: 400 })
+        }
+
         if (!state.nominationVotes) state.nominationVotes = {}
         state.nominationVotes[playerId] = targetId
 

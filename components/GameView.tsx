@@ -1287,7 +1287,8 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                             const isMyVote = game.nominationVotes?.[playerId] === nomineeId;
                             const amIOnRevote = game.votingPhase === 'revote' && game.nominatedPlayers?.includes(playerId);
-                            const canIVote = iAmAlive && !amIOnRevote && nomineeId !== playerId;
+                            const hasAlreadyVoted = !!game.nominationVotes?.[playerId];
+                            const canIVote = iAmAlive && !amIOnRevote && nomineeId !== playerId && !hasAlreadyVoted;
 
                             return (
                               <div key={nomineeId} className={`nominee-card ${isMyVote ? 'nominee-selected' : ''}`} style={{
@@ -1318,7 +1319,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                                       style={{ margin: 0, padding: '8px 16px', fontSize: '0.85rem' }}
                                       onClick={() => sendAction('nomination_vote', nomineeId)}
                                     >
-                                      🗳️ {game.nominationVotes?.[playerId] ? 'Змінити голос' : 'Проголосувати'}
+                                      🗳️ Проголосувати
                                     </button>
                                   )}
                                 </div>
