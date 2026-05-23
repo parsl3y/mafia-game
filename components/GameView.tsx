@@ -931,8 +931,8 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
                 // Таймаут гравця у грі — 1.5 хв, іконка та жовтий нік після 30 сек без heartbeat (заморожено на паузі)
                 const silentMs = now - (p.lastSeen ?? now)
-                const showTimer = silentMs > 30_000 && p.isAlive && !game.isPaused
-                const secsLeft = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
+                const showTimer = false
+                const secsLeft = 0
 
                 const isSpeakingNow = (p.id === game.activeSpeakerId && game.speakerTimerStartedAt) ||
                   (p.id === game.defensePlayerId && game.defenseTimerStartedAt)
@@ -960,6 +960,41 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                   >
                     {/* Слот-номер */}
                     <div className="seat-slot">#{p.slotNumber ?? i + 1}</div>
+
+                    {/* Кнопка Кіку для хоста */}
+                    {isHost && p.id !== playerId && p.isAlive && (
+                      <button
+                        className="host-kick-btn"
+                        title="Вигнати гравця з гри"
+                        onClick={(e) => {
+                          e.stopPropagation() // Запобігаємо вибору цілі при кліку на кнопку
+                          if (confirm(`Ви впевнені, що хочете вигнати гравця ${p.name}?`)) {
+                            sendAction('kick_player', p.id)
+                          }
+                        }}
+                        style={{
+                          position: 'absolute',
+                          top: '-12px',
+                          right: '-12px',
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          backgroundColor: '#ef4444',
+                          color: '#ffffff',
+                          border: '2px solid var(--border)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          zIndex: 10,
+                          boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        ❌
+                      </button>
+                    )}
 
                     {/* Порядковий номер виставлення гравця на голосування */}
                     {game.phase === 'day' && (() => {

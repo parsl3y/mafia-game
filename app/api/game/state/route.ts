@@ -48,23 +48,7 @@ export async function GET(req: Request) {
         stateChanged = true
       }
 
-      state.players = state.players.map(p => {
-        if (p.isAlive && (now - (p.lastSeen ?? now)) >= GAME_TIMEOUT_MS) {
-          p.isAlive = false
-          stateChanged = true
-        }
-        return p
-      })
-
       if (stateChanged) {
-        const winner = checkWinner(state)
-        if (winner) {
-          state.winner = winner
-          state.phase = 'ended'
-          state.lastEvent = `Гравець(і) дискваліфіковані за неактивність! ${winner === 'mafia' ? 'Мафія' : 'Місто'} перемагає!`
-        } else {
-          state.lastEvent = `Гравець(і) дискваліфіковані за неактивність!`
-        }
         await setGameState(state)
       }
     }

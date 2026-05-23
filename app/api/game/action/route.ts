@@ -88,6 +88,45 @@ export async function POST(req: Request) {
       return actionOk(state, playerId)
     }
 
+    if (action === 'kick_player') {
+      if (!actor.isHost) {
+        return NextResponse.json({ error: 'Тільки ведучий може вигнати гравця' }, { status: 403 })
+      }
+      if (!targetId) {
+        return NextResponse.json({ error: 'Не вказано гравця для вигнання' }, { status: 400 })
+      }
+      const target = state.players.find(p => p.id === targetId)
+      if (!target) {
+        return NextResponse.json({ error: 'Гравця не знайдено' }, { status: 400 })
+      }
+      if (!target.isAlive) {
+        return NextResponse.json({ error: 'Цей гравець вже не бере участі в грі' }, { status: 400 })
+      }
+
+      // Виганяємо гравця (вбиваємо)
+      target.isAlive = false
+      state.lastEvent = `Ведучий вигнав гравця ${target.name} з гри!`
+
+      // Якщо вигнаний гравець зараз розмовляє — закінчуємо його чергу
+      if (state.activeSpeakerId === targetId) {
+        finishSpeakerTurn(state)
+      }
+      if (state.defensePlayerId === targetId) {
+        advanceDefense(state)
+      }
+
+      // Перевіряємо чи є переможець після вигнання
+      const winner = checkWinner(state)
+      if (winner) {
+        state.winner = winner
+        state.phase = 'ended'
+        state.lastEvent = `Гравець ${target.name} був вигнаний ведучим! ${winner === 'mafia' ? 'Мафія' : 'Місто'} перемагає!`
+      }
+
+      await setGameState(state)
+      return actionOk(state, playerId)
+    }
+
     // Звичайні ігрові дії вимагають, щоб гравець був живий (крім переходу фаз ведучим або коли гравець мертвий, але зараз його черга останнього слова)
     const isSpeakingLastWords = state.votingPhase === 'last_words' && state.activeSpeakerId === playerId
     if (!actor.isAlive && action !== 'next_phase' && !isSpeakingLastWords) {
