@@ -507,8 +507,23 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const me = game.players.find(p => p.id === playerId)
     const localIAmAlive = me?.isAlive ?? false
     const localMyRole = game.myRole
+
+    // Вночі мафія/дон говорять вільно
     const isMafiaSpeakingNight = game.phase === 'night' && localIAmAlive && (localMyRole === 'mafia' || localMyRole === 'don')
-    const isSpeakingNow = ((game.activeSpeakerId === playerId || game.defensePlayerId === playerId) || isMafiaSpeakingNight) && !forceLocalMute
+
+    // Вдень активний спікер говорить ЛИШЕ після того, як натиснув кнопку (таймер запущено на сервері)
+    const isDaySpeakerActive = game.phase === 'day' && 
+      (game.votingPhase === 'speeches' || game.votingPhase === 'last_words') && 
+      game.activeSpeakerId === playerId && 
+      !!game.speakerTimerStartedAt
+
+    // Вдень захисник говорить ЛИШЕ після того, як натиснув кнопку (таймер запущено на сервері)
+    const isDayDefenderActive = game.phase === 'day' && 
+      game.votingPhase === 'defense' && 
+      game.defensePlayerId === playerId && 
+      !!game.defenseTimerStartedAt
+
+    const isSpeakingNow = (isDaySpeakerActive || isDayDefenderActive || isMafiaSpeakingNight) && !forceLocalMute
 
     const peer = peerRef.current
 
@@ -595,7 +610,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.phase, game?.activeSpeakerId, game?.defensePlayerId, game?.players, playerId, game?.id, localStream, forceLocalMute])
+  }, [game?.phase, game?.votingPhase, game?.activeSpeakerId, game?.defensePlayerId, game?.speakerTimerStartedAt, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream, forceLocalMute])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
