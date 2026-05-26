@@ -214,7 +214,7 @@ function getSeatPos(index: number, total: number) {
   const startAngle = -Math.PI / 2
   const angle = startAngle + (2 * Math.PI * index) / total
   const spiralRadius = 310 + (index / (total || 1)) * 60
-  
+
   const cx = TABLE_SIZE / 2
   const cy = TABLE_SIZE / 2
   return {
@@ -267,9 +267,34 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   const volumeAnalyserRef = useRef<any>(null)
   const [lastSeenEvent, setLastSeenEvent] = useState<string | null>(null)
 
+  const gameRef = useRef<any>(null)
+  useEffect(() => {
+    gameRef.current = game
+  }, [game])
+
   const showNotif = (msg: string) => {
     setNotification(msg)
     setTimeout(() => setNotification(null), 5000)
+  }
+
+  const playRemoteStream = (remoteStream: MediaStream) => {
+    console.log('Відтворення аудіо потоку!')
+    let audio = audioRef.current
+    if (!audio) {
+      audio = document.createElement('audio')
+      audio.autoplay = true
+      audio.style.display = 'none'
+      document.body.appendChild(audio)
+      audioRef.current = audio
+    }
+    audio.srcObject = remoteStream
+    audio.muted = false
+    audio.volume = 1.0
+    audio.play().catch(err => console.warn('Помилка відтворення аудіо стріму:', err))
+
+    // Запускаємо аналізатор гучності для вхідного стріму
+    if (volumeAnalyserRef.current) volumeAnalyserRef.current()
+    volumeAnalyserRef.current = startVolumeAnalyser(remoteStream, setSpeakerVolume)
   }
 
   const fetchState = useCallback(async () => {
@@ -278,11 +303,16 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        if (res.status === 404) {
+          onGameEnd()
+        }
+        return
+      }
       const data: GameState = await res.json()
       setGame(data)
     } catch { /* ignore */ }
-  }, [playerId])
+  }, [playerId, onGameEnd])
 
   // Скидаємо прапорці дій та оновлюємо події лише коли реально змінюється фаза чи підфази
   useEffect(() => {
@@ -407,29 +437,33 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       peer.on('call', (incomingCall: any) => {
         console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
 
+        // Подвійна перевірка безпеки вночі (мафія чує тільки мафію)
+        const currentGame = gameRef.current
+        if (currentGame && currentGame.phase === 'night') {
+          const parts = incomingCall.peer.split('-')
+          const callerId = parts[parts.length - 1]
+          const caller = currentGame.players?.find((p: any) => p.id === callerId)
+          const targetIsMafia = caller?.role === 'mafia' || caller?.role === 'don'
+          
+          const myPlayer = currentGame.players?.find((p: any) => p.id === playerId)
+          const iAmMafia = myPlayer?.role === 'mafia' || myPlayer?.role === 'don'
+          
+          if (!iAmMafia || !targetIsMafia) {
+            console.log('Відхилено вхідний нічний дзвінок (не мафія):', incomingCall.peer)
+            incomingCall.close()
+            return
+          }
+        }
+
         // Передаємо локальний стрім (який зараз вимкнено/замучено), щоб WebRTC успішно 
         // домовився про двосторонній зв'язок на будь-якому пристрої (включаючи iOS, Safari, Chrome)
         const currentStream = localStream || (window as any).localAudioStream
         incomingCall.answer(currentStream)
+        callsRef.current.push(incomingCall)
 
         incomingCall.on('stream', (remoteStream: MediaStream) => {
           console.log('Отримано аудіо потік промовця!')
-          let audio = audioRef.current
-          if (!audio) {
-            audio = document.createElement('audio')
-            audio.autoplay = true
-            audio.style.display = 'none'
-            document.body.appendChild(audio)
-            audioRef.current = audio
-          }
-          audio.srcObject = remoteStream
-          audio.muted = false
-          audio.volume = 1.0
-          audio.play().catch(err => console.warn('Помилка відтворення аудіо стріму:', err))
-
-          // Запускаємо аналізатор гучності для вхідного стріму
-          if (volumeAnalyserRef.current) volumeAnalyserRef.current()
-          volumeAnalyserRef.current = startVolumeAnalyser(remoteStream, setSpeakerVolume)
+          playRemoteStream(remoteStream)
         })
 
         incomingCall.on('close', () => {
@@ -470,8 +504,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
   // ─── Голосовий чат: Трансляція промови ───
   useEffect(() => {
     if (!game) return
-    const isSpeakingNow = ((game.activeSpeakerId === playerId && game.speakerTimerStartedAt) ||
-      (game.defensePlayerId === playerId && game.defenseTimerStartedAt)) && !forceLocalMute
+    const me = game.players.find(p => p.id === playerId)
+    const localIAmAlive = me?.isAlive ?? false
+    const localMyRole = game.myRole
+    const isMafiaSpeakingNight = game.phase === 'night' && localIAmAlive && (localMyRole === 'mafia' || localMyRole === 'don')
+    const isSpeakingNow = ((game.activeSpeakerId === playerId || game.defensePlayerId === playerId) || isMafiaSpeakingNight) && !forceLocalMute
 
     const peer = peerRef.current
 
@@ -491,6 +528,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         const makeCalls = () => {
           game.players.forEach(p => {
             if (p.id !== playerId && p.isAlive) {
+              // Вночі мафія дзвонить тільки мафії, причому тільки в один бік (щоб уникнути WebRTC Glare / колізій)
+              if (game.phase === 'night') {
+                const targetIsMafia = p.role === 'mafia' || p.role === 'don'
+                if (!targetIsMafia) return
+                // Дзвонить тільки той, у кого ID лексикографічно більше
+                if (playerId < p.id) return
+              }
               const targetPeerId = `mafia-${gameId}-${p.id}`
               // Перевіряємо чи мы вже успішно дзвонимо цьому гравцю
               const alreadyCalled = callsRef.current.some(c => c.peer === targetPeerId)
@@ -499,6 +543,11 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 const call = peer.call(targetPeerId, localStream)
                 if (call) {
                   callsRef.current.push(call)
+                  // Отримуємо зворотний потік від слухача
+                  call.on('stream', (remoteStream: MediaStream) => {
+                    console.log('Отримано зворотний аудіо потік від слухача!')
+                    playRemoteStream(remoteStream)
+                  })
                 }
               }
             }
@@ -516,6 +565,13 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
             volumeAnalyserRef.current = null
           }
           setSpeakerVolume(0)
+          if (callsRef.current.length > 0) {
+            console.log('🔇 Зупинка промови. Закриваємо всі активні дзвінки.')
+            callsRef.current.forEach(c => {
+              try { c.close() } catch { }
+            })
+            callsRef.current = []
+          }
         }
       }
     } else {
@@ -539,7 +595,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.activeSpeakerId, game?.speakerTimerStartedAt, game?.defensePlayerId, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream, forceLocalMute])
+  }, [game?.phase, game?.activeSpeakerId, game?.defensePlayerId, game?.players, playerId, game?.id, localStream, forceLocalMute])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
@@ -668,8 +724,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     )
   }
 
-  const iAmSpeakingNow = (playerId === game.activeSpeakerId && !!game.speakerTimerStartedAt) ||
-    (playerId === game.defensePlayerId && !!game.defenseTimerStartedAt)
+  const iAmSpeakingNow = playerId === game.activeSpeakerId || playerId === game.defensePlayerId
 
   const isPublishingVideo = (iAmAlive || iAmSpeakingNow) && (game.phase !== 'night' || myRole === 'mafia' || myRole === 'don')
 
@@ -946,8 +1001,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 const showTimer = false
                 const secsLeft = 0
 
-                const isSpeakingNow = (p.id === game.activeSpeakerId && game.speakerTimerStartedAt) ||
-                  (p.id === game.defensePlayerId && game.defenseTimerStartedAt)
+                const isSpeakingNow = p.id === game.activeSpeakerId || p.id === game.defensePlayerId
 
                 return (
                   <div

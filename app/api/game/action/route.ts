@@ -355,6 +355,9 @@ export async function POST(req: Request) {
 
         // ─── Voting on nominated players ───
       } else if (action === 'nomination_vote') {
+        if (!actor.isAlive) {
+          return NextResponse.json({ error: 'Мертві гравці не можуть голосувати' }, { status: 400 })
+        }
         if (state.votingPhase !== 'voting' && state.votingPhase !== 'revote') {
           return NextResponse.json({ error: 'Зараз не фаза голосування' }, { status: 400 })
         }
@@ -382,6 +385,9 @@ export async function POST(req: Request) {
         state.nominationVotes[playerId] = targetId
 
       } else if (action === 'crash_vote') {
+        if (!actor.isAlive) {
+          return NextResponse.json({ error: 'Мертві гравці не можуть голосувати' }, { status: 400 })
+        }
         if (state.votingPhase !== 'car_crash') {
           return NextResponse.json({ error: 'Зараз не фаза голосування за виключення обох' }, { status: 400 })
         }
@@ -594,7 +600,7 @@ async function resolveNominationVoting(state: GameState, playerId: string): Prom
       state.lastWordPlayerId = victim.id
       state.lastWordReason = 'voted_out'
       state.lastEvent = `Місто виключило ${victim.name}! Останнє слово виключеного гравця.` + voteLog
-      
+
       await setGameState(state)
       return actionOk(state, playerId, { event: state.lastEvent })
     }
@@ -606,11 +612,11 @@ async function resolveNominationVoting(state: GameState, playerId: string): Prom
     state.votingPhase = 'car_crash'
     state.crashTimerStartedAt = Date.now()
     state.crashVotes = {}
-    
+
     const nomineeNames = state.nominatedPlayers
       ? state.nominatedPlayers.map(id => state.players.find(p => p.id === id)?.name ?? '???').join(' та ')
       : 'обох гравців'
-      
+
     state.lastEvent = `Повторне голосування завершилось нічиєю! Запустився таймер автокатастрофи: голосуємо чи залишати обох гравців (${nomineeNames}) у грі?`
     await setGameState(state)
     return actionOk(state, playerId, { event: state.lastEvent })
@@ -703,7 +709,7 @@ async function resolveDay(state: GameState, playerId: string): Promise<NextRespo
       state.lastWordPlayerId = victim.id
       state.lastWordReason = 'voted_out'
       state.lastEvent = `Місто виключило ${victim.name}! Останнє слово виключеного гравця.`
-      
+
       await setGameState(state)
       return actionOk(state, playerId, { event: state.lastEvent })
     }
