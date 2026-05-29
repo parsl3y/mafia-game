@@ -748,7 +748,14 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
   const isPublishingVideo = (iAmAlive || iAmSpeakingNow) && (game.phase !== 'night' || myRole === 'mafia' || myRole === 'don')
 
-  const isPublishingAudio = isPlayerSpeaking(playerId, game, now) && !forceLocalMute
+  let isPublishingAudio = false
+  if ((iAmAlive || iAmSpeakingNow) && !forceLocalMute) {
+    if (game.phase === 'night') {
+      if (myRole === 'mafia' || myRole === 'don') isPublishingAudio = true
+    } else {
+      if (iAmSpeakingNow) isPublishingAudio = true
+    }
+  }
 
   return (
     <LiveKitRoom
