@@ -397,7 +397,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
     // 1. Отримуємо локальний стрім мікрофона та кладемо в стан
     if ((window as any).localAudioStream) {
-      setLocalStream((window as any).localAudioStream)
+      const stream = (window as any).localAudioStream
+      stream.getAudioTracks().forEach((t: any) => t.enabled = false)
+      setLocalStream(stream)
     } else {
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         stream.getAudioTracks().forEach(t => t.enabled = false)
@@ -437,27 +439,52 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       peer.on('call', (incomingCall: any) => {
         console.log('Отримано вхідний дзвінок від:', incomingCall.peer)
 
-        // Подвійна перевірка безпеки вночі (мафія чує тільки мафію)
+        // Подвійна перевірка безпеки вночі (мікрофон вночі вимкнено повністю)
         const currentGame = gameRef.current
         if (currentGame && currentGame.phase === 'night') {
-          const parts = incomingCall.peer.split('-')
-          const callerId = parts[parts.length - 1]
-          const caller = currentGame.players?.find((p: any) => p.id === callerId)
-          const targetIsMafia = caller?.role === 'mafia' || caller?.role === 'don'
-          
-          const myPlayer = currentGame.players?.find((p: any) => p.id === playerId)
-          const iAmMafia = myPlayer?.role === 'mafia' || myPlayer?.role === 'don'
-          
-          if (!iAmMafia || !targetIsMafia) {
-            console.log('Відхилено вхідний нічний дзвінок (не мафія):', incomingCall.peer)
-            incomingCall.close()
-            return
-          }
+          console.log('Відхилено вхідний нічний дзвінок (мікрофон вночі вимкнено повністю):', incomingCall.peer)
+          incomingCall.close()
+          return
         }
 
-        // Передаємо локальний стрім (який зараз вимкнено/замучено), щоб WebRTC успішно 
-        // домовився про двосторонній зв'язок на будь-якому пристрої (включаючи iOS, Safari, Chrome)
+        // Перевіряємо чи ми самі маємо право говорити в цей момент
+        let localIsSpeakingNow = false
+        if (currentGame) {
+          const isDaySpeakerActive = currentGame.phase === 'day' && 
+            (currentGame.votingPhase === 'speeches' || currentGame.votingPhase === 'last_words') && 
+            currentGame.activeSpeakerId === playerId && 
+            !!currentGame.speakerTimerStartedAt
+
+          const isDayDefenderActive = currentGame.phase === 'day' && 
+            currentGame.votingPhase === 'defense' && 
+            currentGame.defensePlayerId === playerId && 
+            !!currentGame.defenseTimerStartedAt
+
+          let isTimerRunning = false
+          const currentNow = Date.now()
+          if (isDaySpeakerActive && currentGame.speakerTimerStartedAt) {
+            const remainingMs = 60_000 - (currentNow - currentGame.speakerTimerStartedAt)
+            if (remainingMs > 0) isTimerRunning = true
+          }
+          if (isDayDefenderActive && currentGame.defenseTimerStartedAt) {
+            const remainingMs = 30_000 - (currentNow - currentGame.defenseTimerStartedAt)
+            if (remainingMs > 0) isTimerRunning = true
+          }
+
+          localIsSpeakingNow = isTimerRunning && !forceLocalMute
+        }
+
+        // Передаємо локальний стрім, переконавшись, що його треки увімкнені/вимкнені відповідно до нашого права говорити
         const currentStream = localStream || (window as any).localAudioStream
+        if (currentStream) {
+          if (!localIsSpeakingNow) {
+            console.log('🔇 Вхідний дзвінок: ми не маємо права говорити, тому примусово вимикаємо треки перед відповіддю.')
+            currentStream.getAudioTracks().forEach((t: any) => t.enabled = false)
+          } else {
+            console.log('🎙️ Вхідний дзвінок: ми говоримо, тому вмикаємо треки стріму перед відповіддю.')
+            currentStream.getAudioTracks().forEach((t: any) => t.enabled = true)
+          }
+        }
         incomingCall.answer(currentStream)
         callsRef.current.push(incomingCall)
 
@@ -506,10 +533,9 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     if (!game) return
     const me = game.players.find(p => p.id === playerId)
     const localIAmAlive = me?.isAlive ?? false
-    const localMyRole = game.myRole
 
-    // Вночі мафія/дон говорять вільно
-    const isMafiaSpeakingNight = game.phase === 'night' && localIAmAlive && (localMyRole === 'mafia' || localMyRole === 'don')
+    // Вночі мікрофон у мафії повністю забрано (завжди false)
+    const isMafiaSpeakingNight = false
 
     // Вдень активний спікер говорить ЛИШЕ після того, як натиснув кнопку (таймер запущено на сервері)
     const isDaySpeakerActive = game.phase === 'day' && 
@@ -523,7 +549,22 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       game.defensePlayerId === playerId && 
       !!game.defenseTimerStartedAt
 
-    const isSpeakingNow = (isDaySpeakerActive || isDayDefenderActive || isMafiaSpeakingNight) && !forceLocalMute
+    // Перевіряємо чи таймер все ще йде (не закінчився час промови)
+    let isTimerRunning = false
+    if (isDaySpeakerActive && game.speakerTimerStartedAt) {
+      const remainingMs = 60_000 - (now - game.speakerTimerStartedAt)
+      if (remainingMs > 0) {
+        isTimerRunning = true
+      }
+    }
+    if (isDayDefenderActive && game.defenseTimerStartedAt) {
+      const remainingMs = 30_000 - (now - game.defenseTimerStartedAt)
+      if (remainingMs > 0) {
+        isTimerRunning = true
+      }
+    }
+
+    const isSpeakingNow = isTimerRunning && !forceLocalMute
 
     const peer = peerRef.current
 
@@ -541,17 +582,12 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
         // Функція здійснення дзвінків до всіх живих гравців
         const makeCalls = () => {
+          if (game.phase === 'night') return // Жодних дзвінків вночі!
+
           game.players.forEach(p => {
             if (p.id !== playerId && p.isAlive) {
-              // Вночі мафія дзвонить тільки мафії, причому тільки в один бік (щоб уникнути WebRTC Glare / колізій)
-              if (game.phase === 'night') {
-                const targetIsMafia = p.role === 'mafia' || p.role === 'don'
-                if (!targetIsMafia) return
-                // Дзвонить тільки той, у кого ID лексикографічно більше
-                if (playerId < p.id) return
-              }
               const targetPeerId = `mafia-${gameId}-${p.id}`
-              // Перевіряємо чи мы вже успішно дзвонимо цьому гравцю
+              // Перевіряємо чи ми вже успішно дзвонимо цьому гравцю
               const alreadyCalled = callsRef.current.some(c => c.peer === targetPeerId)
               if (!alreadyCalled) {
                 console.log('Дзвонимо до слухача:', targetPeerId)
@@ -610,7 +646,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.phase, game?.votingPhase, game?.activeSpeakerId, game?.defensePlayerId, game?.speakerTimerStartedAt, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream, forceLocalMute])
+  }, [game?.phase, game?.votingPhase, game?.activeSpeakerId, game?.defensePlayerId, game?.speakerTimerStartedAt, game?.defenseTimerStartedAt, game?.players, playerId, game?.id, localStream, forceLocalMute, now])
 
   const sendAction = async (action: string, targetId?: string) => {
     const res = await fetch('/api/game/action', {
