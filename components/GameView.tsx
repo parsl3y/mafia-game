@@ -131,6 +131,27 @@ const ROLE_META: Record<Role, { icon: string; label: string; color: string; nigh
   civilian: { icon: '👤', label: 'Громадянин', color: '#94a3b8', nightAction: null },
 }
 
+function isPlayerSpeaking(pId: string, game: GameState | null, now: number): boolean {
+  if (!game) return false
+  if (game.phase === 'night') return false // Жодних мікрофонів вночі!
+
+  if (game.phase === 'day') {
+    if (game.votingPhase === 'speeches' || game.votingPhase === 'last_words') {
+      if (game.activeSpeakerId === pId && game.speakerTimerStartedAt) {
+        const remainingMs = 60_000 - (now - game.speakerTimerStartedAt)
+        return remainingMs > 0
+      }
+    }
+    if (game.votingPhase === 'defense') {
+      if (game.defensePlayerId === pId && game.defenseTimerStartedAt) {
+        const remainingMs = 30_000 - (now - game.defenseTimerStartedAt)
+        return remainingMs > 0
+      }
+    }
+  }
+  return false
+}
+
 // Web Audio API аналізатор гучності
 function startVolumeAnalyser(stream: MediaStream, onVolume: (v: number) => void) {
   try {
@@ -448,31 +469,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
         }
 
         // Перевіряємо чи ми самі маємо право говорити в цей момент
-        let localIsSpeakingNow = false
-        if (currentGame) {
-          const isDaySpeakerActive = currentGame.phase === 'day' && 
-            (currentGame.votingPhase === 'speeches' || currentGame.votingPhase === 'last_words') && 
-            currentGame.activeSpeakerId === playerId && 
-            !!currentGame.speakerTimerStartedAt
-
-          const isDayDefenderActive = currentGame.phase === 'day' && 
-            currentGame.votingPhase === 'defense' && 
-            currentGame.defensePlayerId === playerId && 
-            !!currentGame.defenseTimerStartedAt
-
-          let isTimerRunning = false
-          const currentNow = Date.now()
-          if (isDaySpeakerActive && currentGame.speakerTimerStartedAt) {
-            const remainingMs = 60_000 - (currentNow - currentGame.speakerTimerStartedAt)
-            if (remainingMs > 0) isTimerRunning = true
-          }
-          if (isDayDefenderActive && currentGame.defenseTimerStartedAt) {
-            const remainingMs = 30_000 - (currentNow - currentGame.defenseTimerStartedAt)
-            if (remainingMs > 0) isTimerRunning = true
-          }
-
-          localIsSpeakingNow = isTimerRunning && !forceLocalMute
-        }
+        const localIsSpeakingNow = isPlayerSpeaking(playerId, currentGame, Date.now()) && !forceLocalMute
 
         // Якщо ми зараз говоримо — відповідаємо з нашим стрімом.
         // Якщо ми слухач — відповідаємо БЕЗ стріму (incomingCall.answer()), щоб наш голос взагалі не передавався!
@@ -536,37 +533,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
     const me = game.players.find(p => p.id === playerId)
     const localIAmAlive = me?.isAlive ?? false
 
-    // Вночі мікрофон у мафії повністю забрано (завжди false)
-    const isMafiaSpeakingNight = false
-
-    // Вдень активний спікер говорить ЛИШЕ після того, як натиснув кнопку (таймер запущено на сервері)
-    const isDaySpeakerActive = game.phase === 'day' && 
-      (game.votingPhase === 'speeches' || game.votingPhase === 'last_words') && 
-      game.activeSpeakerId === playerId && 
-      !!game.speakerTimerStartedAt
-
-    // Вдень захисник говорить ЛИШЕ після того, як натиснув кнопку (таймер запущено на сервері)
-    const isDayDefenderActive = game.phase === 'day' && 
-      game.votingPhase === 'defense' && 
-      game.defensePlayerId === playerId && 
-      !!game.defenseTimerStartedAt
-
-    // Перевіряємо чи таймер все ще йде (не закінчився час промови)
-    let isTimerRunning = false
-    if (isDaySpeakerActive && game.speakerTimerStartedAt) {
-      const remainingMs = 60_000 - (now - game.speakerTimerStartedAt)
-      if (remainingMs > 0) {
-        isTimerRunning = true
-      }
-    }
-    if (isDayDefenderActive && game.defenseTimerStartedAt) {
-      const remainingMs = 30_000 - (now - game.defenseTimerStartedAt)
-      if (remainingMs > 0) {
-        isTimerRunning = true
-      }
-    }
-
-    const isSpeakingNow = isTimerRunning && !forceLocalMute
+    const isSpeakingNow = isPlayerSpeaking(playerId, game, now) && !forceLocalMute
 
     const peer = peerRef.current
 
@@ -781,14 +748,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
 
   const isPublishingVideo = (iAmAlive || iAmSpeakingNow) && (game.phase !== 'night' || myRole === 'mafia' || myRole === 'don')
 
-  let isPublishingAudio = false
-  if ((iAmAlive || iAmSpeakingNow) && !forceLocalMute) {
-    if (game.phase === 'night') {
-      if (myRole === 'mafia' || myRole === 'don') isPublishingAudio = true
-    } else {
-      if (iAmSpeakingNow) isPublishingAudio = true
-    }
-  }
+  const isPublishingAudio = isPlayerSpeaking(playerId, game, now) && !forceLocalMute
 
   return (
     <LiveKitRoom
@@ -1054,7 +1014,7 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
                 const showTimer = false
                 const secsLeft = 0
 
-                const isSpeakingNow = p.id === game.activeSpeakerId || p.id === game.defensePlayerId
+                const isSpeakingNow = isPlayerSpeaking(p.id, game, now)
 
                 return (
                   <div
