@@ -474,18 +474,20 @@ export default function GameView({ playerId, playerName, onGameEnd }: Props) {
           localIsSpeakingNow = isTimerRunning && !forceLocalMute
         }
 
-        // Передаємо локальний стрім, переконавшись, що його треки увімкнені/вимкнені відповідно до нашого права говорити
+        // Якщо ми зараз говоримо — відповідаємо з нашим стрімом.
+        // Якщо ми слухач — відповідаємо БЕЗ стріму (incomingCall.answer()), щоб наш голос взагалі не передавався!
         const currentStream = localStream || (window as any).localAudioStream
-        if (currentStream) {
-          if (!localIsSpeakingNow) {
-            console.log('🔇 Вхідний дзвінок: ми не маємо права говорити, тому примусово вимикаємо треки перед відповіддю.')
+        if (localIsSpeakingNow && currentStream) {
+          console.log('🎙️ Вхідний дзвінок: ми є активним промовцем! Відповідаємо зі стрімом.')
+          currentStream.getAudioTracks().forEach((t: any) => t.enabled = true)
+          incomingCall.answer(currentStream)
+        } else {
+          console.log('🔇 Вхідний дзвінок: ми є слухачем! Відповідаємо БЕЗ нашого стріму.')
+          if (currentStream) {
             currentStream.getAudioTracks().forEach((t: any) => t.enabled = false)
-          } else {
-            console.log('🎙️ Вхідний дзвінок: ми говоримо, тому вмикаємо треки стріму перед відповіддю.')
-            currentStream.getAudioTracks().forEach((t: any) => t.enabled = true)
           }
+          incomingCall.answer() // Відповідаємо без надання нашого стріму!
         }
-        incomingCall.answer(currentStream)
         callsRef.current.push(incomingCall)
 
         incomingCall.on('stream', (remoteStream: MediaStream) => {
