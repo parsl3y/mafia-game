@@ -8,18 +8,8 @@ const TIMEOUT_MS = 180_000 // 180 секунд (3 хвилини) неактив
 
 // Видаляємо гравців що зникли > 10 сек тому, перепризначаємо хоста
 async function evictStalePlayers(players: Player[]): Promise<Player[]> {
-  const now = Date.now()
-  let alive = players.filter(p => (now - (p.lastSeen ?? 0)) < TIMEOUT_MS)
-
-  if (alive.length !== players.length) {
-    // Якщо хост вийшов — новий хост перший за слотом
-    if (alive.length > 0 && !alive.some(p => p.isHost)) {
-      alive = alive.sort((a, b) => a.slotNumber - b.slotNumber)
-      alive[0].isHost = true
-    }
-    await setLobbyPlayers(alive)
-  }
-  return alive
+  // АФК кік повністю відключено!
+  return players
 }
 
 // GET /api/lobby — список гравців (автоматично очищає тих хто пропав)

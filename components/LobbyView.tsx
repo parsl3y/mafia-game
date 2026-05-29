@@ -171,6 +171,22 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
     onLeave()
   }
 
+  const handleKick = async (targetId: string) => {
+    try {
+      const res = await fetch('/api/lobby/kick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostId: playerId, targetId }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        if (Array.isArray(d.players)) {
+          setPlayers(d.players)
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   const handleStart = async () => {
     setStarting(true)
     setError(null)
@@ -225,21 +241,34 @@ export default function LobbyView({ playerId, playerName, isHost: initialHost, o
           </div>
           <div className="players-list">
             {[...players].sort((a, b) => (a.slotNumber ?? 0) - (b.slotNumber ?? 0)).map((p) => {
-              const silentMs  = now - (p.lastSeen ?? now)
-              const isWarning = silentMs > 30_000 // > 30 сек без heartbeat = AFK
-              const secsLeft  = Math.max(0, Math.ceil((90_000 - silentMs) / 1000))
-
-
               return (
-                <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''} ${isWarning ? 'player-leaving' : ''}`}>
+                <div key={p.id} className={`player-row ${p.id === playerId ? 'player-me' : ''}`}>
                   <span className="player-num">#{p.slotNumber ?? '?'}</span>
                   <span className="player-avatar">{p.isHost ? '👑' : '👤'}</span>
                   <span className="player-name">{p.name}</span>
                   {p.id === playerId && <span className="player-tag">Ви</span>}
-                  {isWarning && (
-                    <span className="player-timeout" title={`Викине через ${secsLeft}с`}>
-                      ⏳ {secsLeft}с
-                    </span>
+                  {amHost && p.id !== playerId && (
+                    <button
+                      className="kick-btn"
+                      onClick={() => handleKick(p.id)}
+                      title="Кікнути гравця"
+                      style={{
+                        marginLeft: 'auto',
+                        padding: '4px 8px',
+                        backgroundColor: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        transition: 'opacity 0.2s ease',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                    >
+                      Кікнути
+                    </button>
                   )}
                 </div>
               )
