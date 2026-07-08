@@ -15,6 +15,7 @@ export interface SpyPlayer {
   isHost: boolean
   isSpy: boolean
   lastSeen?: number
+  pingedAt?: number | null
 }
 
 export type SpyPhase = 'lobby' | 'playing' | 'voting' | 'ended'

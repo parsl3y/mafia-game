@@ -14,6 +14,7 @@ interface Player {
   id: string
   name: string
   isHost: boolean
+  pingedAt?: number | null
 }
 
 export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart, onLeave }: SpyLobbyViewProps) {
@@ -85,6 +86,30 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
     } catch { /* ignore */ }
   }
 
+  const pingHost = async () => {
+    try {
+      const res = await fetch('/api/spy/lobby', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ping_host', playerId }),
+      })
+      const data = await res.json()
+      if (data.players) setPlayers(data.players)
+    } catch { /* ignore */ }
+  }
+
+  const hostHere = async () => {
+    try {
+      const res = await fetch('/api/spy/lobby', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'host_here', playerId }),
+      })
+      const data = await res.json()
+      if (data.players) setPlayers(data.players)
+    } catch { /* ignore */ }
+  }
+
   const handleLeave = async () => {
     await fetch('/api/spy/lobby', {
       method: 'POST',
@@ -150,8 +175,19 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
 
         {/* Гравці */}
         <div style={{ marginBottom: 24 }}>
-          <p style={{ color: 'var(--text2)', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
-            Гравці ({players.length}/8)
+          <p style={{ color: 'var(--text2)', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+            <span>Гравці ({players.length}/8)</span>
+            {!isHost && players.find(p => p.isHost)?.pingedAt && (
+              <span style={{ color: 'var(--gold)', textTransform: 'none' }}>⏳ Чекаємо хоста...</span>
+            )}
+            {!isHost && !players.find(p => p.isHost)?.pingedAt && players.some(p => p.isHost) && (
+              <button 
+                onClick={pingHost}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: '.78rem', textDecoration: 'underline' }}
+              >
+                🔔 Ти тут, хост?
+              </button>
+            )}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {players.map(p => (
@@ -193,17 +229,28 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
 
         {/* Кнопка старту */}
         {isHost && (
-          <button onClick={handleStart} disabled={starting || players.length < 3} style={{
-            width: '100%', padding: 14, fontSize: '1rem', fontWeight: 600, fontFamily: 'inherit',
-            background: players.length >= 3 ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : 'var(--bg3)',
-            color: players.length >= 3 ? '#fff' : 'var(--text2)',
-            border: 'none', borderRadius: 14, cursor: players.length >= 3 ? 'pointer' : 'not-allowed',
-            opacity: starting ? .5 : 1, transition: 'all .2s',
-          }}>
-            {starting ? 'Починаємо...' : players.length < 3
-              ? `Потрібно ще ${3 - players.length} гравців`
-              : '🕵️ Почати гру'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {players.find(p => p.id === playerId)?.pingedAt && (
+              <button onClick={hostHere} style={{
+                width: '100%', padding: 14, fontSize: '1rem', fontWeight: 600, fontFamily: 'inherit',
+                background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 14, cursor: 'pointer',
+                animation: 'pulse 1.5s infinite'
+              }}>
+                ❗ Я ТУТ (Підтвердити присутність)
+              </button>
+            )}
+            <button onClick={handleStart} disabled={starting || players.length < 3} style={{
+              width: '100%', padding: 14, fontSize: '1rem', fontWeight: 600, fontFamily: 'inherit',
+              background: players.length >= 3 ? 'linear-gradient(135deg, #2563eb, #3b82f6)' : 'var(--bg3)',
+              color: players.length >= 3 ? '#fff' : 'var(--text2)',
+              border: 'none', borderRadius: 14, cursor: players.length >= 3 ? 'pointer' : 'not-allowed',
+              opacity: starting ? .5 : 1, transition: 'all .2s',
+            }}>
+              {starting ? 'Починаємо...' : players.length < 3
+                ? `Потрібно ще ${3 - players.length} гравців`
+                : '🕵️ Почати гру'}
+            </button>
+          </div>
         )}
 
         {!isHost && (

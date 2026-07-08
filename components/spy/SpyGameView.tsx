@@ -8,6 +8,7 @@ interface Player {
   name: string
   isHost: boolean
   isSpy?: boolean
+  pingedAt?: number | null
 }
 
 interface SpyGameState {
@@ -69,6 +70,9 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
       if (!res.ok) console.error(data.error)
     } catch { /* ignore */ }
   }
+
+  const pingHost = async () => sendAction('ping_host')
+  const hostHere = async () => sendAction('host_here')
 
   if (!game) {
     return (
@@ -282,7 +286,29 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
 
         {/* Список гравців */}
         <div className="spy-players-sidebar">
-          <p className="spy-sidebar-title">Гравці</p>
+          <p className="spy-sidebar-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Гравці</span>
+            {!isHost && game.players.find(p => p.isHost)?.pingedAt && (
+              <span style={{ color: 'var(--gold)', textTransform: 'none', fontSize: '.8rem' }}>⏳ Чекаємо хоста...</span>
+            )}
+            {!isHost && !game.players.find(p => p.isHost)?.pingedAt && game.players.some(p => p.isHost) && (
+              <button 
+                onClick={pingHost}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: '.78rem', textDecoration: 'underline' }}
+              >
+                🔔 Ти тут, хост?
+              </button>
+            )}
+          </p>
+          {isHost && game.players.find(p => p.id === playerId)?.pingedAt && (
+            <button onClick={hostHere} style={{
+              width: '100%', padding: '8px', fontSize: '.85rem', fontWeight: 600, fontFamily: 'inherit',
+              background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer',
+              marginBottom: 12, animation: 'pulse 1.5s infinite'
+            }}>
+              ❗ Я ТУТ (Підтвердити)
+            </button>
+          )}
           {game.players.map((p, i) => (
             <div key={p.id} className={`spy-sidebar-player ${p.id === playerId ? 'spy-sidebar-me' : ''} ${p.id === game.currentAskerId ? 'spy-sidebar-active' : ''}`}>
               <span className="spy-sidebar-num">{i + 1}</span>

@@ -7,15 +7,25 @@ import {
   getSpyGameState,
   setSpyGameState,
   clearSpyLobby,
+  setSpyLobbyPlayers,
   type SpyPlayer,
 } from '@/lib/spy-redis'
 import { SPY_CATEGORIES } from '@/lib/spy-constants'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/spy/lobby — список гравців у лобі
+// GET /api/spy/lobby — список гравців у лобі (і перевірка AFK хоста)
 export async function GET() {
-  const players = await getSpyLobbyPlayers()
+  let players = await getSpyLobbyPlayers()
+  
+  // Перевірка AFK хоста
+  const host = players.find(p => p.isHost)
+  if (host && host.pingedAt) {
+    if (Date.now() - host.pingedAt > 15000) {
+      players = await removePlayerFromSpyLobby(host.id)
+    }
+  }
+
   return NextResponse.json({ players })
 }
 
@@ -91,6 +101,28 @@ export async function POST(req: Request) {
       }
       const newPlayers = await removePlayerFromSpyLobby(body.targetId)
       return NextResponse.json({ players: newPlayers })
+    }
+
+    // Пінг хоста (будь-який гравець)
+    if (body.action === 'ping_host' && body.playerId) {
+      const players = await getSpyLobbyPlayers()
+      const host = players.find(p => p.isHost)
+      if (host && host.id !== body.playerId && !host.pingedAt) {
+        host.pingedAt = Date.now()
+        await setSpyLobbyPlayers(players)
+      }
+      return NextResponse.json({ success: true, players })
+    }
+
+    // Хост підтверджує що він тут
+    if (body.action === 'host_here' && body.playerId) {
+      const players = await getSpyLobbyPlayers()
+      const host = players.find(p => p.id === body.playerId)
+      if (host?.isHost) {
+        host.pingedAt = null
+        await setSpyLobbyPlayers(players)
+      }
+      return NextResponse.json({ success: true, players })
     }
 
     // Приєднання гравця

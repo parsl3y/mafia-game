@@ -27,12 +27,47 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const playerId = searchParams.get('playerId')
 
-    const state = await getSpyGameState()
+    let state = await getSpyGameState()
     if (!state) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
+    // Перевірка AFK хоста
+    const host = state.players.find(p => p.isHost)
+    if (host && host.pingedAt) {
+      if (Date.now() - host.pingedAt > 15000) {
+        state.players = state.players.filter(p => !p.isHost)
+        state.askOrder = state.askOrder.filter(id => id !== host.id)
+        delete state.votes[host.id]
+        
+        if (state.currentAskerId === host.id && state.askOrder.length > 0) {
+          state.askIndex = state.askIndex % state.askOrder.length
+          state.currentAskerId = state.askOrder[state.askIndex]
+        }
+        if (state.currentTargetId === host.id) {
+          state.currentTargetId = null
+        }
 
+        // Призначаємо нового хоста
+        if (state.players.length > 0) {
+          state.players[0].isHost = true
+        }
+
+        state.lastEvent = `👢 Хост був вигнаний через неактивність (AFK).`
+
+        if (host.isSpy && state.phase !== 'ended') {
+          state.phase = 'ended'
+          state.winner = 'town'
+          state.lastEvent += ` Він виявився шпигуном! Місто перемогло.`
+        } else if (state.players.length <= 2 && state.phase !== 'ended') {
+          state.phase = 'ended'
+          state.winner = 'spy'
+          state.lastEvent += ` Залишилось надто мало гравців. Шпигун переміг.`
+        }
+
+        await setSpyGameState(state)
+      }
+    }
 
     return NextResponse.json(maskStateForPlayer(state, playerId))
   } catch (err) {

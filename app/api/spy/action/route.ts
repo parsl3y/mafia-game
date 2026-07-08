@@ -283,6 +283,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
     }
 
+    // ─── Пінг хоста ───
+    if (action === 'ping_host') {
+      const host = state.players.find(p => p.isHost)
+      if (host && host.id !== playerId && !host.pingedAt) {
+        host.pingedAt = Date.now()
+        await setSpyGameState(state)
+      }
+      return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
+    }
+
+    // ─── Хост підтверджує присутність ───
+    if (action === 'host_here') {
+      const host = state.players.find(p => p.isHost)
+      if (host && host.id === playerId) {
+        host.pingedAt = null
+        await setSpyGameState(state)
+      }
+      return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
+    }
+
     return NextResponse.json({ error: 'Невідома дія' }, { status: 400 })
   } catch (err) {
     console.error('POST /api/spy/action error:', err)
