@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Мафія — Онлайн гра',
-  description: 'Грайте в Мафію онлайн в реальному часі. Ролі: Мафія, Шериф, Лікар, Повія, Громадянин.',
+  title: 'Game Hub — Ігрова платформа',
+  description: 'Ігрова платформа для компанії друзів. Мафія, Покер, Шпигун та інші ігри онлайн.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
