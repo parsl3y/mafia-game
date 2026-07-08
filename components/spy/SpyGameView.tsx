@@ -18,8 +18,6 @@ interface SpyGameState {
   spyId: string | null
   isSpy: boolean
   round: number
-  timerDuration: number
-  timerStartedAt: number | null
   currentAskerId: string | null
   currentTargetId: string | null
   askOrder: string[]
@@ -42,7 +40,6 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
   const [showLocations, setShowLocations] = useState(false)
   const [spyGuessLocation, setSpyGuessLocation] = useState<string | null>(null)
   const [showSpyGuessModal, setShowSpyGuessModal] = useState(false)
-  const [timeLeft, setTimeLeft] = useState<number | null>(null)
 
   const fetchState = useCallback(async () => {
     try {
@@ -58,22 +55,6 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
     const id = setInterval(fetchState, 2000)
     return () => clearInterval(id)
   }, [fetchState])
-
-  // Таймер
-  useEffect(() => {
-    if (!game?.timerStartedAt || game.phase !== 'playing') {
-      setTimeLeft(null)
-      return
-    }
-    const tick = () => {
-      const elapsed = (Date.now() - game.timerStartedAt!) / 1000
-      const remaining = Math.max(0, game.timerDuration - elapsed)
-      setTimeLeft(Math.ceil(remaining))
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [game?.timerStartedAt, game?.timerDuration, game?.phase])
 
   const sendAction = async (action: string, extra?: Record<string, unknown>) => {
     try {
@@ -106,12 +87,6 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
   const currentAsker = game.players.find(p => p.id === game.currentAskerId)
   const currentTarget = game.players.find(p => p.id === game.currentTargetId)
 
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60)
-    const sec = s % 60
-    return `${m}:${sec.toString().padStart(2, '0')}`
-  }
-
   const votedCount = Object.keys(game.votes).length
   const myVote = game.votes[playerId]
 
@@ -126,11 +101,6 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
             </span>
             <span className="spy-round-badge">Раунд {game.round}</span>
           </div>
-          {timeLeft !== null && game.phase === 'playing' && (
-            <div className={`spy-timer ${timeLeft <= 30 ? 'spy-timer-warning' : ''} ${timeLeft <= 10 ? 'spy-timer-critical' : ''}`}>
-              ⏱ {formatTime(timeLeft)}
-            </div>
-          )}
         </div>
 
         {/* Роль і локація */}
@@ -139,14 +109,14 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
             <>
               <div className="spy-role-icon">🕵️</div>
               <h2 className="spy-role-title spy-role-spy">Ви — Шпигун!</h2>
-              <p className="spy-role-hint">Вгадайте локацію за відповідями інших гравців. Не видайте себе!</p>
+              <p className="spy-role-hint">Вгадайте героя за відповідями інших гравців. Не видайте себе!</p>
             </>
           ) : (
             <>
               <div className="spy-role-icon">📍</div>
-              <h2 className="spy-role-title">Локація:</h2>
+              <h2 className="spy-role-title">Герой:</h2>
               <p className="spy-role-location">{game.location}</p>
-              <p className="spy-role-hint">Відповідайте на питання так, щоб шпигун не вгадав локацію, але інші зрозуміли, що ви свій.</p>
+              <p className="spy-role-hint">Відповідайте на питання так, щоб шпигун не вгадав героя, але інші зрозуміли, що ви свій.</p>
             </>
           )}
         </div>
@@ -217,7 +187,7 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
                 className="spy-action-btn spy-action-spy-guess"
                 onClick={() => setShowSpyGuessModal(true)}
               >
-                🎯 Вгадати локацію
+                🎯 Вгадати героя
               </button>
             )}
           </div>
@@ -266,7 +236,7 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
             </div>
             <div className="spy-reveal">
               <p>Шпигуном був: <strong>{game.players.find(p => p.id === game.spyId)?.name}</strong></p>
-              <p>Локація: <strong>{game.location}</strong></p>
+              <p>Справжній герой: <strong>{game.location}</strong></p>
             </div>
             {isHost && (
               <button className="spy-action-btn spy-action-primary" onClick={() => sendAction('new_game')}>
@@ -304,7 +274,7 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
               onClick={() => setShowLocations(!showLocations)}
               style={{ fontSize: '.82rem' }}
             >
-              {showLocations ? 'Сховати локації' : '📍 Переглянути всі локації'}
+              {showLocations ? 'Сховати героїв' : '📍 Переглянути всіх героїв'}
             </button>
             {showLocations && (
               <div className="spy-locations-list">
@@ -321,8 +291,8 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
       {showSpyGuessModal && (
         <div className="spy-modal-overlay" onClick={() => setShowSpyGuessModal(false)}>
           <div className="spy-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="spy-modal-title">🎯 Вгадайте локацію</h3>
-            <p className="spy-modal-hint">Якщо вгадаєте — ви переможете! Якщо ні — місто виграє.</p>
+            <h3 className="spy-modal-title">🎯 Вгадайте героя</h3>
+            <p className="spy-modal-hint">Якщо вгадаєте героя Dota 2 — ви переможете! Якщо ні — місто виграє.</p>
             <div className="spy-locations-grid">
               {SPY_LOCATIONS.map(loc => (
                 <button

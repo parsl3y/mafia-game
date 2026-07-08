@@ -93,7 +93,6 @@ export async function POST(req: Request) {
 
       state.phase = 'voting'
       state.votes = {}
-      state.timerStartedAt = null
       state.lastEvent = `${actor.name} ініціював голосування! Оберіть підозрюваного шпигуна.`
 
       await setSpyGameState(state)
@@ -137,7 +136,7 @@ export async function POST(req: Request) {
         if (suspected === state.spyId) {
           // Правильно вгадали шпигуна!
           // Але шпигун має останній шанс вгадати локацію
-          state.lastEvent = `Місто обрало ${suspectedPlayer?.name}! Це дійсно шпигун! 🎯 Але шпигун має останній шанс — вгадати локацію.`
+          state.lastEvent = `Місто обрало ${suspectedPlayer?.name}! Це дійсно шпигун! 🎯 Але шпигун має останній шанс — вгадати героя.`
           state.phase = 'ended'
           state.winner = 'town'
 
@@ -163,12 +162,12 @@ export async function POST(req: Request) {
     // ─── Шпигун вгадує локацію ───
     if (action === 'spy_guess') {
       if (!actor.isSpy) {
-        return NextResponse.json({ error: 'Тільки шпигун може вгадувати локацію' }, { status: 403 })
+        return NextResponse.json({ error: 'Тільки шпигун може вгадувати героя' }, { status: 403 })
       }
 
       const guess = body.guess as string
       if (!guess) {
-        return NextResponse.json({ error: 'Оберіть локацію' }, { status: 400 })
+        return NextResponse.json({ error: 'Оберіть героя' }, { status: 400 })
       }
 
       state.spyGuess = guess
@@ -177,12 +176,12 @@ export async function POST(req: Request) {
         // Шпигун вгадав!
         state.phase = 'ended'
         state.winner = 'spy'
-        state.lastEvent = `🕵️ Шпигун ${actor.name} вгадав локацію "${guess}"! Шпигун переміг!`
+        state.lastEvent = `🕵️ Шпигун ${actor.name} вгадав героя "${guess}"! Шпигун переміг!`
       } else {
         // Шпигун помилився
         state.phase = 'ended'
         state.winner = 'town'
-        state.lastEvent = `🕵️ Шпигун ${actor.name} сказав "${guess}", але локація — "${state.location}". Місто перемогло!`
+        state.lastEvent = `🕵️ Шпигун ${actor.name} сказав "${guess}", але справжній герой — "${state.location}". Місто перемогло!`
       }
 
       await setSpyGameState(state)
@@ -207,7 +206,6 @@ export async function POST(req: Request) {
       state.spyId = spyId
       state.location = location
       state.round = 1
-      state.timerStartedAt = Date.now()
       state.currentAskerId = askOrder[0]
       state.currentTargetId = null
       state.askOrder = askOrder

@@ -32,17 +32,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Гра не знайдена' }, { status: 404 })
     }
 
-    // Автоматична перевірка таймера
-    if (state.phase === 'playing' && state.timerStartedAt) {
-      const elapsed = (Date.now() - state.timerStartedAt) / 1000
-      if (elapsed >= state.timerDuration) {
-        // Час вийшов → переходимо до голосування
-        state.phase = 'voting'
-        state.lastEvent = '⏰ Час вийшов! Починається голосування — оберіть підозрюваного шпигуна.'
-        state.timerStartedAt = null
-        await setSpyGameState(state)
-      }
-    }
+
 
     return NextResponse.json(maskStateForPlayer(state, playerId))
   } catch (err) {

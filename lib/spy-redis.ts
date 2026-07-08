@@ -26,8 +26,6 @@ export interface SpyGameState {
   location: string           // поточна локація (відомо всім крім шпигуна)
   spyId: string              // хто шпигун
   round: number              // поточний раунд
-  timerDuration: number       // скільки секунд на раунд
-  timerStartedAt: number | null
   currentAskerId: string | null  // хто зараз задає питання
   currentTargetId: string | null // кому задає
   askOrder: string[]          // порядок опитування

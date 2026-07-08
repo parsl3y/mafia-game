@@ -57,8 +57,6 @@ export async function POST(req: Request) {
         location,
         spyId,
         round: 1,
-        timerDuration: body.timerMinutes ? body.timerMinutes * 60 : 480, // за замовчуванням 8 хвилин
-        timerStartedAt: Date.now(),
         currentAskerId: askOrder[0],
         currentTargetId: null,
         askOrder,
