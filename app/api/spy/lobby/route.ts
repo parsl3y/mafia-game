@@ -9,7 +9,7 @@ import {
   clearSpyLobby,
   type SpyPlayer,
 } from '@/lib/spy-redis'
-import { SPY_LOCATIONS } from '@/lib/spy-constants'
+import { SPY_CATEGORIES } from '@/lib/spy-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,8 +39,10 @@ export async function POST(req: Request) {
       const spyIndex = Math.floor(Math.random() * players.length)
       const spyId = players[spyIndex].id
 
-      // Вибір випадкової локації
-      const location = SPY_LOCATIONS[Math.floor(Math.random() * SPY_LOCATIONS.length)]
+      // Вибір випадкової локації/персонажа з категорії
+      const categoryId = body.categoryId || 'dota'
+      const categoryItems = SPY_CATEGORIES[categoryId]?.items || SPY_CATEGORIES['dota'].items
+      const location = categoryItems[Math.floor(Math.random() * categoryItems.length)]
 
       // Порядок опитування — випадковий
       const shuffled = [...players].sort(() => Math.random() - 0.5)
@@ -48,6 +50,7 @@ export async function POST(req: Request) {
 
       const state = {
         id: uuid(),
+        categoryId,
         phase: 'playing' as const,
         players: players.map(p => ({
           ...p,
@@ -77,6 +80,17 @@ export async function POST(req: Request) {
     if (body.action === 'leave' && body.playerId) {
       const players = await removePlayerFromSpyLobby(body.playerId)
       return NextResponse.json({ players })
+    }
+
+    // Кік гравця з лобі (хост)
+    if (body.action === 'kick' && body.playerId && body.targetId) {
+      const players = await getSpyLobbyPlayers()
+      const host = players.find(p => p.id === body.playerId)
+      if (!host?.isHost) {
+        return NextResponse.json({ error: 'Тільки хост може кікати' }, { status: 403 })
+      }
+      const newPlayers = await removePlayerFromSpyLobby(body.targetId)
+      return NextResponse.json({ players: newPlayers })
     }
 
     // Приєднання гравця

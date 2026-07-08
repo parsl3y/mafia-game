@@ -21,6 +21,7 @@ export type SpyPhase = 'lobby' | 'playing' | 'voting' | 'ended'
 
 export interface SpyGameState {
   id: string
+  categoryId: string         // обрана категорія слів
   phase: SpyPhase
   players: SpyPlayer[]
   location: string           // поточна локація (відомо всім крім шпигуна)

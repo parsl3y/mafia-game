@@ -18,6 +18,7 @@ interface Player {
 
 export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart, onLeave }: SpyLobbyViewProps) {
   const [players, setPlayers] = useState<Player[]>([])
+  const [categoryId, setCategoryId] = useState('dota')
   const [error, setError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
 
@@ -57,7 +58,7 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
       const res = await fetch('/api/spy/lobby', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', playerId }),
+        body: JSON.stringify({ action: 'start', playerId, categoryId }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -70,6 +71,18 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
     } finally {
       setStarting(false)
     }
+  }
+
+  const kickPlayer = async (targetId: string) => {
+    try {
+      const res = await fetch('/api/spy/lobby', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'kick', playerId, targetId }),
+      })
+      const data = await res.json()
+      if (data.players) setPlayers(data.players)
+    } catch { /* ignore */ }
   }
 
   const handleLeave = async () => {
@@ -101,6 +114,40 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
           </button>
         </div>
 
+        {/* Налаштування (тільки хост) */}
+        {isHost && (
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: 'var(--bg3)', borderRadius: 14, border: '1px solid var(--border)' }}>
+            <p style={{ color: 'var(--text2)', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
+              Налаштування гри
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '.88rem' }}>Категорія слів</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => setCategoryId('dota')} style={{
+                  padding: '5px 12px', fontSize: '.82rem', fontFamily: 'inherit',
+                  background: categoryId === 'dota' ? 'var(--blue)' : 'var(--bg2)',
+                  color: categoryId === 'dota' ? '#fff' : 'var(--text2)',
+                  border: `1px solid ${categoryId === 'dota' ? 'var(--blue)' : 'var(--border)'}`,
+                  borderRadius: 8, cursor: 'pointer', fontWeight: categoryId === 'dota' ? 600 : 400,
+                  transition: 'all .15s',
+                }}>
+                  Dota 2
+                </button>
+                <button onClick={() => setCategoryId('dungeon')} style={{
+                  padding: '5px 12px', fontSize: '.82rem', fontFamily: 'inherit',
+                  background: categoryId === 'dungeon' ? 'var(--blue)' : 'var(--bg2)',
+                  color: categoryId === 'dungeon' ? '#fff' : 'var(--text2)',
+                  border: `1px solid ${categoryId === 'dungeon' ? 'var(--blue)' : 'var(--border)'}`,
+                  borderRadius: 8, cursor: 'pointer', fontWeight: categoryId === 'dungeon' ? 600 : 400,
+                  transition: 'all .15s',
+                }}>
+                  Dungeon
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Гравці */}
         <div style={{ marginBottom: 24 }}>
           <p style={{ color: 'var(--text2)', fontSize: '.78rem', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>
@@ -114,12 +161,20 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
                 border: `1.5px solid ${p.id === playerId ? 'rgba(59,130,246,.3)' : 'var(--border)'}`,
                 borderRadius: 12,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{p.isHost ? '👑' : '👤'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {p.isHost && <span style={{ fontSize: '1rem' }} title="Хост">👑</span>}
                   <span style={{ fontWeight: p.id === playerId ? 600 : 400 }}>{p.name}</span>
-                  {p.id === playerId && <span style={{ fontSize: '.75rem', color: 'var(--blue)' }}>(ви)</span>}
+                  {p.id === playerId && <span style={{ fontSize: '.75rem', background: 'var(--blue)', color: '#fff', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>Ви</span>}
                 </div>
-                {p.isHost && <span style={{ fontSize: '.72rem', color: 'var(--gold)', fontWeight: 600 }}>ХОСТ</span>}
+                {isHost && p.id !== playerId && (
+                  <button 
+                    onClick={() => kickPlayer(p.id)}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '4px', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    title="Кікнути гравця"
+                  >
+                    ❌
+                  </button>
+                )}
               </div>
             ))}
             {players.length === 0 && (
@@ -129,8 +184,6 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
             )}
           </div>
         </div>
-
-
 
         {error && (
           <p style={{ color: 'var(--red)', fontSize: '.85rem', background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8, padding: '10px 14px', marginBottom: 16 }}>
@@ -165,10 +218,10 @@ export default function SpyLobbyView({ playerId, playerName, isHost, onGameStart
             Правила гри
           </p>
           <ul style={{ color: 'var(--text2)', fontSize: '.82rem', lineHeight: 1.6, paddingLeft: 18, margin: 0 }}>
-            <li>Один гравець — <strong style={{ color: '#3b82f6' }}>шпигун</strong>, решта знають загаданого героя Dota 2</li>
+            <li>Один гравець — <strong style={{ color: '#3b82f6' }}>шпигун</strong>, решта знають загаданого персонажа</li>
             <li>Гравці задають один одному питання по черзі</li>
             <li>Мета мирних: знайти шпигуна за відповідями</li>
-            <li>Мета шпигуна: вгадати героя з контексту</li>
+            <li>Мета шпигуна: вгадати персонажа з контексту</li>
             <li>Будь-хто може ініціювати голосування в будь-який момент</li>
           </ul>
         </div>

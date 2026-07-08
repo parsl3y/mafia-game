@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { SPY_LOCATIONS } from '@/lib/spy-constants'
+import { SPY_CATEGORIES } from '@/lib/spy-constants'
 
 interface Player {
   id: string
@@ -13,6 +13,7 @@ interface Player {
 interface SpyGameState {
   id: string
   phase: 'playing' | 'voting' | 'ended'
+  categoryId: string
   players: Player[]
   location: string | null
   spyId: string | null
@@ -181,6 +182,21 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
               🗳️ Ініціювати голосування
             </button>
 
+            {/* Примусово завершити (тільки хост) */}
+            {isHost && (
+              <button
+                className="spy-action-btn spy-action-secondary"
+                onClick={() => {
+                  if (confirm('Ви впевнені, що хочете завершити гру?')) {
+                    sendAction('force_end')
+                  }
+                }}
+                style={{ marginTop: '12px' }}
+              >
+                🛑 Завершити гру (Хост)
+              </button>
+            )}
+
             {/* Шпигун: вгадати локацію */}
             {iAmSpy && (
               <button
@@ -225,6 +241,21 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
                 Голосувати →
               </button>
             )}
+
+            {/* Примусово завершити (тільки хост) під час голосування */}
+            {isHost && (
+              <button
+                className="spy-action-btn spy-action-secondary"
+                onClick={() => {
+                  if (confirm('Ви впевнені, що хочете завершити гру?')) {
+                    sendAction('force_end')
+                  }
+                }}
+                style={{ marginTop: '16px' }}
+              >
+                🛑 Завершити гру (Хост)
+              </button>
+            )}
           </div>
         )}
 
@@ -262,6 +293,19 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
               </span>
               {game.phase === 'ended' && p.isSpy && <span className="spy-sidebar-spy-badge">🕵️</span>}
               {game.phase === 'voting' && game.votes[p.id] && <span style={{ fontSize: '.72rem', color: 'var(--green)' }}>✓</span>}
+              {isHost && p.id !== playerId && game.phase !== 'ended' && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Ви дійсно хочете вигнати ${p.name}?`)) {
+                      sendAction('kick_player', { targetId: p.id })
+                    }
+                  }}
+                  style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: '.9rem', display: 'flex' }}
+                  title="Кікнути гравця"
+                >
+                  ❌
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -278,7 +322,7 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
             </button>
             {showLocations && (
               <div className="spy-locations-list">
-                {SPY_LOCATIONS.map(loc => (
+                {SPY_CATEGORIES[game.categoryId]?.items.map(loc => (
                   <span key={loc} className="spy-location-chip">{loc}</span>
                 ))}
               </div>
@@ -292,9 +336,9 @@ export default function SpyGameView({ playerId, onGameEnd }: SpyGameViewProps) {
         <div className="spy-modal-overlay" onClick={() => setShowSpyGuessModal(false)}>
           <div className="spy-modal" onClick={e => e.stopPropagation()}>
             <h3 className="spy-modal-title">🎯 Вгадайте героя</h3>
-            <p className="spy-modal-hint">Якщо вгадаєте героя Dota 2 — ви переможете! Якщо ні — місто виграє.</p>
+            <p className="spy-modal-hint">Якщо вгадаєте персонажа — ви переможете! Якщо ні — місто виграє.</p>
             <div className="spy-locations-grid">
-              {SPY_LOCATIONS.map(loc => (
+              {SPY_CATEGORIES[game.categoryId]?.items.map(loc => (
                 <button
                   key={loc}
                   className={`spy-location-option ${spyGuessLocation === loc ? 'spy-location-option-selected' : ''}`}

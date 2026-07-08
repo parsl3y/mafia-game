@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSpyGameState, setSpyGameState } from '@/lib/spy-redis'
-import { SPY_LOCATIONS } from '@/lib/spy-constants'
+import { SPY_CATEGORIES } from '@/lib/spy-constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const { playerId, action, targetId } = body
-    // action: 'pick_target' | 'next_asker' | 'call_vote' | 'vote' | 'spy_guess' | 'new_game'
+    // action: 'pick_target' | 'next_asker' | 'call_vote' | 'vote' | 'spy_guess' | 'new_game' | 'force_end' | 'kick_player'
 
     const state = await getSpyGameState()
     if (!state) {
@@ -135,8 +135,8 @@ export async function POST(req: Request) {
 
         if (suspected === state.spyId) {
           // Правильно вгадали шпигуна!
-          // Але шпигун має останній шанс вгадати локацію
-          state.lastEvent = `Місто обрало ${suspectedPlayer?.name}! Це дійсно шпигун! 🎯 Але шпигун має останній шанс — вгадати героя.`
+          // Але шпигун має останній шанс вгадати персонажа
+          state.lastEvent = `Місто обрало ${suspectedPlayer?.name}! Це дійсно шпигун! 🎯 Але шпигун має останній шанс — вгадати персонажа.`
           state.phase = 'ended'
           state.winner = 'town'
 
@@ -159,15 +159,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
     }
 
-    // ─── Шпигун вгадує локацію ───
+    // ─── Шпигун вгадує персонажа ───
     if (action === 'spy_guess') {
       if (!actor.isSpy) {
-        return NextResponse.json({ error: 'Тільки шпигун може вгадувати героя' }, { status: 403 })
+        return NextResponse.json({ error: 'Тільки шпигун може вгадувати персонажа' }, { status: 403 })
       }
 
       const guess = body.guess as string
       if (!guess) {
-        return NextResponse.json({ error: 'Оберіть героя' }, { status: 400 })
+        return NextResponse.json({ error: 'Оберіть персонажа' }, { status: 400 })
       }
 
       state.spyGuess = guess
@@ -176,12 +176,12 @@ export async function POST(req: Request) {
         // Шпигун вгадав!
         state.phase = 'ended'
         state.winner = 'spy'
-        state.lastEvent = `🕵️ Шпигун ${actor.name} вгадав героя "${guess}"! Шпигун переміг!`
+        state.lastEvent = `🕵️ Шпигун ${actor.name} вгадав персонажа "${guess}"! Шпигун переміг!`
       } else {
         // Шпигун помилився
         state.phase = 'ended'
         state.winner = 'town'
-        state.lastEvent = `🕵️ Шпигун ${actor.name} сказав "${guess}", але справжній герой — "${state.location}". Місто перемогло!`
+        state.lastEvent = `🕵️ Шпигун ${actor.name} сказав "${guess}", але справжній персонаж — "${state.location}". Місто перемогло!`
       }
 
       await setSpyGameState(state)
@@ -197,7 +197,9 @@ export async function POST(req: Request) {
       // Вибір нового шпигуна й локації
       const spyIndex = Math.floor(Math.random() * state.players.length)
       const spyId = state.players[spyIndex].id
-      const location = SPY_LOCATIONS[Math.floor(Math.random() * SPY_LOCATIONS.length)]
+      
+      const categoryItems = SPY_CATEGORIES[state.categoryId || 'dota']?.items || SPY_CATEGORIES['dota'].items
+      const location = categoryItems[Math.floor(Math.random() * categoryItems.length)]
 
       const shuffled = [...state.players].sort(() => Math.random() - 0.5)
       const askOrder = shuffled.map(p => p.id)
@@ -221,6 +223,61 @@ export async function POST(req: Request) {
 
       const firstAsker = state.players.find(p => p.id === askOrder[0])
       state.lastEvent = `Нова гра! ${firstAsker?.name} задає питання першим.`
+
+      await setSpyGameState(state)
+      return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
+    }
+
+    // ─── Примусове завершення (хост) ───
+    if (action === 'force_end') {
+      if (!actor.isHost) {
+        return NextResponse.json({ error: 'Тільки хост може завершити гру' }, { status: 403 })
+      }
+      state.phase = 'ended'
+      state.winner = null
+      state.lastEvent = `🛑 Хост ${actor.name} примусово завершив гру.`
+      await setSpyGameState(state)
+      return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
+    }
+
+    // ─── Кік гравця з гри (хост) ───
+    if (action === 'kick_player') {
+      if (!actor.isHost) {
+        return NextResponse.json({ error: 'Тільки хост може кікати гравців' }, { status: 403 })
+      }
+      if (!targetId || targetId === playerId) {
+        return NextResponse.json({ error: 'Некоректний гравець для вигнання' }, { status: 400 })
+      }
+
+      const kicked = state.players.find(p => p.id === targetId)
+      if (!kicked) return NextResponse.json({ error: 'Гравця не знайдено' }, { status: 400 })
+
+      state.players = state.players.filter(p => p.id !== targetId)
+      state.askOrder = state.askOrder.filter(id => id !== targetId)
+      delete state.votes[targetId]
+      
+      // Якщо кікнули того, хто зараз опитує
+      if (state.currentAskerId === targetId && state.askOrder.length > 0) {
+        state.askIndex = state.askIndex % state.askOrder.length
+        state.currentAskerId = state.askOrder[state.askIndex]
+      }
+      if (state.currentTargetId === targetId) {
+        state.currentTargetId = null
+      }
+
+      state.lastEvent = `👢 Хост вигнав гравця ${kicked.name} з гри.`
+
+      // Якщо кікнули шпигуна — місто виграє автоматично
+      if (kicked.isSpy && state.phase !== 'ended') {
+        state.phase = 'ended'
+        state.winner = 'town'
+        state.lastEvent += ` Він виявився шпигуном! Місто перемогло.`
+      } else if (state.players.length <= 2 && state.phase !== 'ended') {
+        // Якщо залишилось 2 гравці і шпигун ще живий — шпигун виграв
+        state.phase = 'ended'
+        state.winner = 'spy'
+        state.lastEvent += ` Залишилось надто мало гравців. Шпигун переміг.`
+      }
 
       await setSpyGameState(state)
       return NextResponse.json({ success: true, state: maskStateForPlayer(state, playerId) })
